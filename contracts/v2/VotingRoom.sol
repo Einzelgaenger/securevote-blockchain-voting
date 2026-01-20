@@ -47,7 +47,13 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /// @notice Last round where voter voted (anti-double-vote)
     mapping(address voter => uint256 round) public lastVotedRound;
     
-    /// @notice Total credits granted to all voters
+    /// @notice Total credits ever added to system (only increases when pool exhausted)
+    uint256 public totalCreditsInSystem;
+    
+    /// @notice Available credits in pool (from removed voters, ready for reuse)
+    uint256 public availableCreditsPool;
+    
+    /// @notice Total credits currently granted to active voters
     uint256 public totalCreditsGranted;
     
     /// @notice Total credits used in all votes
@@ -199,8 +205,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Remove voter from registry with automatic credit refund
-     * @dev Credits are always returned to system when voter removed
+     * @notice Remove voter from registry with automatic credit pooling
+     * @dev Credits returned to availableCreditsPool for reuse
      */
     function removeVoter(address voter) external onlyAdmin notInState(State.Active) {
         uint256 refundAmount = voterCredit[voter];
@@ -209,9 +215,10 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         voterVersion[voter] = 0;
         voterCredit[voter] = 0;
         
-        // Refund credits to system (only if voter had credits)
+        // Return credits to pool (only if voter had credits)
         if (refundAmount > 0) {
             totalCreditsGranted -= refundAmount;
+            availableCreditsPool += refundAmount; // ADD TO POOL!
         }
         
         emit VoterRemoved(address(this), voter);
@@ -221,14 +228,32 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Grant vote credit to voter
+     * @notice Grant vote credit to voter (uses pool first, then adds new)
+     * @dev Smart allocation: pool credits → new credits (only if pool exhausted)
      */
     function grantCredit(address voter, uint256 amount) external onlyAdmin notInState(State.Active) {
         if (amount == 0) revert InvalidAmount();
         if (!_isVoterEligible(voter)) revert VoterNotEligible();
         
+        // Update voter balance
         voterCredit[voter] += amount;
         totalCreditsGranted += amount;
+        
+        // Smart credit allocation logic
+        if (availableCreditsPool >= amount) {
+            // Case 1: Pool has enough - use pool credits
+            availableCreditsPool -= amount;
+        } else if (availableCreditsPool > 0) {
+            // Case 2: Pool partially covers - use all pool + add remainder
+            uint256 fromPool = availableCreditsPool;
+            uint256 newCreditsNeeded = amount - fromPool;
+            
+            availableCreditsPool = 0;
+            totalCreditsInSystem += newCreditsNeeded;
+        } else {
+            // Case 3: Pool empty - add all as new credits
+            totalCreditsInSystem += amount;
+        }
         
         emit CreditGranted(address(this), voter, amount, voterCredit[voter]);
     }
@@ -269,7 +294,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Batch grant credits to multiple voters
-     * @dev Useful for Excel upload with pre-defined credits
+     * @dev Uses pool first, then adds new credits. Efficient for Excel upload.
      * @param voters Array of voter addresses
      * @param amounts Array of credit amounts (same length as voters)
      */
@@ -279,20 +304,40 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     ) external onlyAdmin notInState(State.Active) {
         if (voters.length != amounts.length) revert InvalidAmount();
         
+        uint256 totalGrantAmount = 0;
+        
+        // First pass: update voter balances and calculate total
         for (uint256 i = 0; i < voters.length; i++) {
             if (amounts[i] == 0) revert InvalidAmount();
             if (!_isVoterEligible(voters[i])) revert VoterNotEligible();
             
             voterCredit[voters[i]] += amounts[i];
-            totalCreditsGranted += amounts[i];
+            totalGrantAmount += amounts[i];
             
             emit CreditGranted(address(this), voters[i], amounts[i], voterCredit[voters[i]]);
+        }
+        
+        // Second pass: smart allocation from pool + system
+        totalCreditsGranted += totalGrantAmount;
+        
+        if (availableCreditsPool >= totalGrantAmount) {
+            // Pool covers all - use pool credits
+            availableCreditsPool -= totalGrantAmount;
+        } else if (availableCreditsPool > 0) {
+            // Pool partially covers - use all pool + add remainder
+            uint256 newCreditsNeeded = totalGrantAmount - availableCreditsPool;
+            availableCreditsPool = 0;
+            totalCreditsInSystem += newCreditsNeeded;
+        } else {
+            // Pool empty - add all as new credits
+            totalCreditsInSystem += totalGrantAmount;
         }
     }
     
     /**
      * @notice Batch add voters AND grant credits in ONE transaction
      * @dev MOST EFFICIENT for Excel upload (add + grant = 1 popup!)
+     * @dev Uses pool first before adding new credits to system
      * @param voters Array of voter addresses
      * @param credits Array of credit amounts
      */
@@ -301,6 +346,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256[] calldata credits
     ) external onlyAdmin notInState(State.Active) {
         if (voters.length != credits.length) revert InvalidAmount();
+        
+        uint256 totalGrantAmount = 0;
         
         for (uint256 i = 0; i < voters.length; i++) {
             if (voters[i] == address(0)) revert ZeroAddress();
@@ -312,8 +359,21 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
             
             // Grant credit
             voterCredit[voters[i]] += credits[i];
-            totalCreditsGranted += credits[i];
+            totalGrantAmount += credits[i];
             emit CreditGranted(address(this), voters[i], credits[i], voterCredit[voters[i]]);
+        }
+        
+        // Smart allocation from pool + system
+        totalCreditsGranted += totalGrantAmount;
+        
+        if (availableCreditsPool >= totalGrantAmount) {
+            availableCreditsPool -= totalGrantAmount;
+        } else if (availableCreditsPool > 0) {
+            uint256 newCreditsNeeded = totalGrantAmount - availableCreditsPool;
+            availableCreditsPool = 0;
+            totalCreditsInSystem += newCreditsNeeded;
+        } else {
+            totalCreditsInSystem += totalGrantAmount;
         }
     }
     
@@ -337,8 +397,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Remove voter and refund their credits
-     * @dev Credits are returned to the system (totalCreditsGranted reduced)
+     * @notice Remove voter and refund their credits to pool
+     * @dev Credits returned to availableCreditsPool for reuse
      */
     function removeVoterWithRefund(address voter) external onlyAdmin notInState(State.Active) {
         uint256 refundAmount = voterCredit[voter];
@@ -347,9 +407,10 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         voterVersion[voter] = 0;
         voterCredit[voter] = 0;
         
-        // Refund credits to system
+        // Return credits to pool
         if (refundAmount > 0) {
             totalCreditsGranted -= refundAmount;
+            availableCreditsPool += refundAmount;
         }
         
         emit VoterRemoved(address(this), voter);
@@ -360,10 +421,12 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Remove all voters with addresses provided
-     * @dev Credits are refunded to system. Use for cleanup/reset specific voters.
+     * @dev Credits returned to pool for reuse. Efficient batch cleanup.
      * @param voters Array of voter addresses to remove
      */
     function batchRemoveVoters(address[] calldata voters) external onlyAdmin notInState(State.Active) {
+        uint256 totalRefund = 0;
+        
         for (uint256 i = 0; i < voters.length; i++) {
             uint256 refundAmount = voterCredit[voters[i]];
             
@@ -371,12 +434,16 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
             voterVersion[voters[i]] = 0;
             voterCredit[voters[i]] = 0;
             
-            // Refund credits
-            if (refundAmount > 0) {
-                totalCreditsGranted -= refundAmount;
-            }
+            // Accumulate refund
+            totalRefund += refundAmount;
             
             emit VoterRemoved(address(this), voters[i]);
+        }
+        
+        // Batch refund to pool (single update)
+        if (totalRefund > 0) {
+            totalCreditsGranted -= totalRefund;
+            availableCreditsPool += totalRefund;
         }
     }
     
@@ -444,11 +511,15 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Reset room for new voting session
+     * @dev Clears ALL credit tracking including pool and system total
      */
     function resetRoom() external onlyAdmin inState(State.Closed) {
         voterRegistryVersion++;
         candidateRegistryVersion++;
         
+        // Reset ALL credit counters
+        totalCreditsInSystem = 0;
+        availableCreditsPool = 0;
         totalCreditsGranted = 0;
         totalCreditsUsed = 0;
         
@@ -459,12 +530,13 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Prepare next round without resetting voter/candidate registry
-     * @dev Use this to continue with same voters and candidates
+     * @dev Preserves pool, resets granted/used for fresh allocation
      */
     function prepareNextRound() external onlyAdmin inState(State.Closed) {
-        // Reset credit counters for new round
+        // Reset credit counters for new round (PRESERVE pool and system total)
         totalCreditsGranted = 0;
         totalCreditsUsed = 0;
+        // Note: totalCreditsInSystem and availableCreditsPool are NOT reset!
         
         // Change state back to Inactive for setup
         state = State.Inactive;
