@@ -9,10 +9,10 @@ const network = import.meta.env.VITE_NETWORK || 'sepolia';
 const chains = network === 'mainnet' ? [mainnet] : [sepolia];
 
 export const config = getDefaultConfig({
-  appName: 'SecureVote - Gasless Voting',
-  projectId: walletConnectProjectId,
-  chains,
-  ssr: false, // We're using Vite, not Next.js SSR
+    appName: 'SecureVote - Gasless Voting',
+    projectId: walletConnectProjectId,
+    chains,
+    ssr: false, // We're using Vite, not Next.js SSR
 });
 
 // Export current chain for easy access

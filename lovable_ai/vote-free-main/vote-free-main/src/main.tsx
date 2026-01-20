@@ -10,11 +10,11 @@ import { config } from './config/wagmi';
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
-  <WagmiProvider config={config}>
-    <QueryClientProvider client={queryClient}>
-      <RainbowKitProvider>
-        <App />
-      </RainbowKitProvider>
-    </QueryClientProvider>
-  </WagmiProvider>
+    <WagmiProvider config={config}>
+        <QueryClientProvider client={queryClient}>
+            <RainbowKitProvider>
+                <App />
+            </RainbowKitProvider>
+        </QueryClientProvider>
+    </WagmiProvider>
 );

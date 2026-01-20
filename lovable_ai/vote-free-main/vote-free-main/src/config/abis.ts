@@ -8,10 +8,10 @@ import RoomFactoryABI from '../contracts/RoomFactory.abi';
  * Automatically imported from /ABI/v2 folder
  */
 export const ABIS = {
-  MinimalForwarder: MinimalForwarderABI,
-  SponsorVault: SponsorVaultABI,
-  VotingRoom: VotingRoomABI,
-  RoomFactory: RoomFactoryABI,
+    MinimalForwarder: MinimalForwarderABI,
+    SponsorVault: SponsorVaultABI,
+    VotingRoom: VotingRoomABI,
+    RoomFactory: RoomFactoryABI,
 } as const;
 
 // TypeScript types for better autocomplete
