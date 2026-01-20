@@ -366,16 +366,9 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Track processed voters to skip duplicates
-        mapping(address => bool) memory processed;
-        
-        // First pass: calculate net change and update voter balances
+        // Process all voters (duplicates allowed - last value wins)
         for (uint256 i = 0; i < voters.length; i++) {
             if (!_isVoterEligible(voters[i])) revert VoterNotEligible();
-            
-            // Skip duplicate voters in same batch
-            if (processed[voters[i]]) continue;
-            processed[voters[i]] = true;
             
             uint256 currentCredit = voterCredit[voters[i]];
             uint256 newAmount = amounts[i];
@@ -442,15 +435,9 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Track processed voters to skip duplicates
-        mapping(address => bool) memory processed;
-        
+        // Process all voters (duplicates allowed - last value wins)
         for (uint256 i = 0; i < voters.length; i++) {
             if (voters[i] == address(0)) revert ZeroAddress();
-            
-            // Skip duplicate voters in same batch
-            if (processed[voters[i]]) continue;
-            processed[voters[i]] = true;
             
             // Add voter if not already eligible
             if (!_isVoterEligible(voters[i])) {
