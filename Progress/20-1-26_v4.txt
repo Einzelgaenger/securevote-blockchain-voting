@@ -1,0 +1,7 @@
+
+
+step npm install:
+npm install
+npm install @rainbow-me/rainbowkit wagmi viem@2.x
+npm install @supabase/supabase-js
+npm run dev

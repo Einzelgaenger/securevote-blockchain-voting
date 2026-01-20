@@ -1,0 +1,8 @@
+progress: udah bisa wallet connect, tapi posisi tombol masih belum sesuai dengan UI UX dari lovable ainya,
+buat biar penempatan tombol dan informasi sesuai (tidak ada mock data sama sekali)
+Buatkan logicnya agar UI sesuai dengan data sesungguhnya
+
+Kapan pakai alchemy ini dan bagaimana?
+harusnya juga ada panel untuk creator yang mana bisa melakukan banyak hal seperti add relayer, atur bps and more
+
+pastikan UI UX tetap konsisten dengan template contoh dari lovable_ai
