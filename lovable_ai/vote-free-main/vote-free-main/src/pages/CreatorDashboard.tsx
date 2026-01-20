@@ -8,15 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { BarChart, DollarSign, Users, Vote } from "lucide-react";
-
-const FACTORY_OWNER = "0x04A3baCFd9D57E2fA661064c03C1c1774A8cEb97";
+import { BarChart, DollarSign, Users, Vote, Loader2 } from "lucide-react";
+import { useIsFactoryOwner } from "@/hooks/useIsFactoryOwner";
+import { useFactorySettings } from "@/hooks/useFactorySettings";
+import { useVaultData } from "@/hooks/useVaultData";
+import { useRooms } from "@/hooks/useRooms";
+import { formatEther } from "viem";
 
 const CreatorDashboard = () => {
     const { address } = useAccount();
+    const isFactoryOwner = useIsFactoryOwner();
+    const { registrationFeeWei, platformFeeBps, overheadBps, roomCount } = useFactorySettings();
+    const { balance: vaultBalance } = useVaultData();
+    const { rooms, loading: roomsLoading } = useRooms();
 
     // Access Control: Only factory owner can access
-    if (address && address.toLowerCase() !== FACTORY_OWNER.toLowerCase()) {
+    if (address && !isFactoryOwner) {
         return <Navigate to="/" replace />;
     }
 
@@ -62,7 +69,11 @@ const CreatorDashboard = () => {
                                 <CardContent className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Current Fee:</span>
-                                        <span className="text-2xl font-bold">0.01 ETH</span>
+                                        {registrationFeeWei !== undefined ? (
+                                            <span className="text-2xl font-bold">{formatEther(registrationFeeWei)} ETH</span>
+                                        ) : (
+                                            <Loader2 className="h-6 w-6 animate-spin" />
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="newFee">Update Fee (ETH)</Label>
@@ -81,11 +92,19 @@ const CreatorDashboard = () => {
                                     <div className="space-y-2">
                                         <div className="flex justify-between">
                                             <span className="text-sm">Platform Fee:</span>
-                                            <Badge variant="secondary">5% (500 bps)</Badge>
+                                            {platformFeeBps !== undefined ? (
+                                                <Badge variant="secondary">{Number(platformFeeBps) / 100}% ({platformFeeBps.toString()} bps)</Badge>
+                                            ) : (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            )}
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-sm">Overhead:</span>
-                                            <Badge variant="secondary">10% (1000 bps)</Badge>
+                                            {overheadBps !== undefined ? (
+                                                <Badge variant="secondary">{Number(overheadBps) / 100}% ({overheadBps.toString()} bps)</Badge>
+                                            ) : (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            )}
                                         </div>
                                     </div>
                                     <div className="space-y-2">
@@ -134,34 +153,65 @@ const CreatorDashboard = () => {
                         <Card>
                             <CardHeader>
                                 <CardTitle>All Voting Rooms</CardTitle>
-                                <CardDescription>Rooms created via RoomFactory</CardDescription>
+                                <CardDescription>
+                                    {roomCount !== undefined ? `Total: ${roomCount.toString()} rooms` : 'Loading...'}
+                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="mb-4 flex gap-4">
                                     <Input placeholder="Search by name or address..." className="max-w-sm" />
                                     <Button variant="outline">Filter by State</Button>
                                 </div>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Room Name</TableHead>
-                                            <TableHead>Address</TableHead>
-                                            <TableHead>Admin</TableHead>
-                                            <TableHead>State</TableHead>
-                                            <TableHead>Round</TableHead>
-                                            <TableHead>Voters</TableHead>
-                                            <TableHead>Created</TableHead>
-                                            <TableHead>Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        <TableRow>
-                                            <TableCell className="text-muted-foreground" colSpan={8}>
-                                                No rooms created yet
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableBody>
-                                </Table>
+                                {roomsLoading ? (
+                                    <div className="flex justify-center py-8">
+                                        <Loader2 className="h-8 w-8 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Room Name</TableHead>
+                                                <TableHead>Address</TableHead>
+                                                <TableHead>Admin</TableHead>
+                                                <TableHead>State</TableHead>
+                                                <TableHead>Round</TableHead>
+                                                <TableHead>Credits</TableHead>
+                                                <TableHead>Created</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {rooms.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell className="text-muted-foreground text-center" colSpan={7}>
+                                                        No rooms created yet
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                rooms.map((room) => (
+                                                    <TableRow key={room.room_address}>
+                                                        <TableCell className="font-medium">{room.room_name}</TableCell>
+                                                        <TableCell className="font-mono text-xs">
+                                                            {room.room_address.slice(0, 6)}...{room.room_address.slice(-4)}
+                                                        </TableCell>
+                                                        <TableCell className="font-mono text-xs">
+                                                            {room.room_admin.slice(0, 6)}...{room.room_admin.slice(-4)}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant={room.state === 'Active' ? 'default' : 'secondary'}>
+                                                                {room.state}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell>{room.current_round}</TableCell>
+                                                        <TableCell>{room.total_credits_in_system}</TableCell>
+                                                        <TableCell className="text-xs">
+                                                            {new Date(room.created_at).toLocaleDateString()}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -171,12 +221,18 @@ const CreatorDashboard = () => {
                         <div className="grid gap-6 md:grid-cols-3">
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Total ETH Deposited</CardTitle>
+                                    <CardTitle className="text-sm font-medium">Vault ETH Balance</CardTitle>
                                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">0.0 ETH</div>
-                                    <p className="text-xs text-muted-foreground">Across all rooms</p>
+                                    {vaultBalance !== undefined ? (
+                                        <>
+                                            <div className="text-2xl font-bold">{formatEther(vaultBalance)} ETH</div>
+                                            <p className="text-xs text-muted-foreground">Available in SponsorVault</p>
+                                        </>
+                                    ) : (
+                                        <Loader2 className="h-6 w-6 animate-spin" />
+                                    )}
                                 </CardContent>
                             </Card>
 

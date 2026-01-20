@@ -8,6 +8,7 @@ export const CONTRACT_ADDRESSES = {
     SponsorVault: import.meta.env.VITE_SPONSOR_VAULT_ADDRESS as `0x${string}`,
     VotingRoomImplementation: import.meta.env.VITE_VOTING_ROOM_IMPLEMENTATION_ADDRESS as `0x${string}`,
     RoomFactory: import.meta.env.VITE_ROOM_FACTORY_ADDRESS as `0x${string}`,
+    FactoryOwner: import.meta.env.VITE_FACTORY_OWNER_ADDRESS as `0x${string}`,
 } as const;
 
 // Validate addresses are set
@@ -15,7 +16,7 @@ export function validateContracts() {
     const missing: string[] = [];
 
     Object.entries(CONTRACT_ADDRESSES).forEach(([name, address]) => {
-        if (!address || address === '') {
+        if (!address || address === '' || address === '0xYourAddress') {
             missing.push(name);
         }
     });
@@ -26,5 +27,6 @@ export function validateContracts() {
         return false;
     }
 
+    console.log('✅ All contract addresses configured');
     return true;
 }
