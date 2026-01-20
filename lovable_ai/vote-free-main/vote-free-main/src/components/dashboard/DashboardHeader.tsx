@@ -1,5 +1,5 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { GradientButton } from "@/components/ui/GradientButton";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Bell, Search } from "lucide-react";
 
 export function DashboardHeader() {
@@ -7,7 +7,7 @@ export function DashboardHeader() {
     <header className="h-16 border-b border-border/50 bg-card/30 backdrop-blur-sm flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
         <SidebarTrigger className="-ml-2" />
-        
+
         {/* Search */}
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -26,17 +26,14 @@ export function DashboardHeader() {
           <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-destructive" />
         </button>
 
-        {/* Network badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-success/10 border border-success/20">
-          <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-          <span className="text-sm font-medium text-success">Sepolia</span>
-        </div>
-
-        {/* Gas balance */}
-        <GradientButton variant="outline" size="sm" className="hidden sm:flex">
-          <span className="text-muted-foreground">Balance:</span>
-          <span className="font-semibold">0.245 ETH</span>
-        </GradientButton>
+        {/* RainbowKit Connect Button */}
+        <ConnectButton
+          chainStatus="icon"
+          showBalance={{
+            smallScreen: false,
+            largeScreen: true,
+          }}
+        />
       </div>
     </header>
   );
