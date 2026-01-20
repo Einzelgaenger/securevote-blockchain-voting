@@ -78,6 +78,7 @@ contract SponsorVault is Ownable, ReentrancyGuard {
     error ZeroAddress();
     error InsufficientBalance();
     error TransferFailed();
+    error UnauthorizedWithdrawal();
     
     // ============ Constructor ============
     
@@ -109,11 +110,16 @@ contract SponsorVault is Ownable, ReentrancyGuard {
     
     /**
      * @notice Withdraw room balance (only when not Active)
-     * @dev Platform fee is deducted before transfer
+     * @dev Only callable by room contract itself (which validates admin + state)
+     * @param room Address of the room to withdraw from
+     * @param amount Amount to withdraw
      */
     function withdraw(address room, uint256 amount) external nonReentrant {
-        // NOTE: Room contract will validate caller is roomAdmin
-        // and state is not Active
+        // CRITICAL: Only the room contract itself can withdraw its balance
+        // Room contract has already validated:
+        // 1. Caller is roomAdmin (via onlyAdmin modifier)
+        // 2. State is not Active (via notInState modifier)
+        if (msg.sender != room) revert UnauthorizedWithdrawal();
         
         uint256 balance = roomBalance[room];
         if (balance < amount) revert InsufficientBalance();

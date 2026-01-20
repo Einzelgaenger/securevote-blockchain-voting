@@ -19,6 +19,11 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     enum State { Inactive, Active, Ended, Closed }
     
+    // ============ Constants ============
+    
+    /// @notice Maximum batch size to prevent out-of-gas errors
+    uint256 public constant MAX_BATCH_SIZE = 500;
+    
     // ============ State Variables ============
     
     bool public initialized;
@@ -77,6 +82,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     struct RoundSummary {
         uint256 winnerId;
+        string winnerName;
         uint256 totalVotesWeight;
         uint256 startAt;
         uint256 endAt;
@@ -111,6 +117,9 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     event MaxCostUpdated(address indexed room, uint256 oldCost, uint256 newCost);
     event RegistryReset(address indexed room, uint256 voterVersion, uint256 candidateVersion);
     event RoundPrepared(address indexed room, uint256 indexed nextRound);
+    event PoolUpdated(address indexed room, uint256 newPoolAmount, uint256 poolChange, string reason);
+    event CreditsBurned(address indexed room, uint256 amount, uint256 newSystemTotal);
+    event CreditUpdated(address indexed room, address indexed voter, uint256 oldCredit, uint256 newCredit);
     
     // ============ Errors ============
     
@@ -125,6 +134,10 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     error InsufficientDeposit();
     error ZeroAddress();
     error InvalidAmount();
+    error ArrayTooLarge(uint256 provided, uint256 maxAllowed);
+    error InsufficientPoolBalance(uint256 requested, uint256 available);
+    error VaultWithdrawalFailed(bytes returnData);
+    error TransferToAdminFailed();
     
     // ============ Modifiers ============
     
@@ -219,6 +232,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         if (refundAmount > 0) {
             totalCreditsGranted -= refundAmount;
             availableCreditsPool += refundAmount; // ADD TO POOL!
+            
+            emit PoolUpdated(address(this), availableCreditsPool, refundAmount, "remove-voter-refund");
         }
         
         emit VoterRemoved(address(this), voter);
@@ -228,34 +243,74 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Grant vote credit to voter (uses pool first, then adds new)
-     * @dev Smart allocation: pool credits → new credits (only if pool exhausted)
+     * @notice Set voter credit (not add) - handles increase and decrease automatically
+     * @dev Increase: uses pool first, then adds new | Decrease: returns diff to pool
+     * @param voter Target voter address
+     * @param newAmount New credit amount to SET (replaces current balance)
      */
-    function grantCredit(address voter, uint256 amount) external onlyAdmin notInState(State.Active) {
-        if (amount == 0) revert InvalidAmount();
+    function grantCredit(address voter, uint256 newAmount) external onlyAdmin notInState(State.Active) {
         if (!_isVoterEligible(voter)) revert VoterNotEligible();
         
-        // Update voter balance
-        voterCredit[voter] += amount;
-        totalCreditsGranted += amount;
+        uint256 currentCredit = voterCredit[voter];
         
-        // Smart credit allocation logic
-        if (availableCreditsPool >= amount) {
-            // Case 1: Pool has enough - use pool credits
-            availableCreditsPool -= amount;
-        } else if (availableCreditsPool > 0) {
-            // Case 2: Pool partially covers - use all pool + add remainder
-            uint256 fromPool = availableCreditsPool;
-            uint256 newCreditsNeeded = amount - fromPool;
-            
-            availableCreditsPool = 0;
-            totalCreditsInSystem += newCreditsNeeded;
-        } else {
-            // Case 3: Pool empty - add all as new credits
-            totalCreditsInSystem += amount;
+        if (newAmount == currentCredit) {
+            return; // No change needed
         }
         
-        emit CreditGranted(address(this), voter, amount, voterCredit[voter]);
+        if (newAmount > currentCredit) {
+            // INCREASE: need to add credits
+            uint256 increaseAmount = newAmount - currentCredit;
+            
+            voterCredit[voter] = newAmount;
+            totalCreditsGranted += increaseAmount;
+            
+            // Smart allocation from pool first
+            if (availableCreditsPool >= increaseAmount) {
+                // Pool covers all
+                availableCreditsPool -= increaseAmount;
+                emit PoolUpdated(address(this), availableCreditsPool, increaseAmount, "grant-from-pool");
+            } else if (availableCreditsPool > 0) {
+                // Pool partially covers
+                uint256 fromPool = availableCreditsPool;
+                uint256 newCreditsNeeded = increaseAmount - fromPool;
+                
+                availableCreditsPool = 0;
+                totalCreditsInSystem += newCreditsNeeded;
+                
+                emit PoolUpdated(address(this), 0, fromPool, "grant-partial-pool");
+            } else {
+                // Pool empty - all from system
+                totalCreditsInSystem += increaseAmount;
+            }
+        } else {
+            // DECREASE: return excess to pool
+            uint256 decreaseAmount = currentCredit - newAmount;
+            
+            voterCredit[voter] = newAmount;
+            totalCreditsGranted -= decreaseAmount;
+            availableCreditsPool += decreaseAmount;
+            
+            emit PoolUpdated(address(this), availableCreditsPool, decreaseAmount, "grant-refund-to-pool");
+        }
+        
+        emit CreditUpdated(address(this), voter, currentCredit, newAmount);
+        emit CreditGranted(address(this), voter, newAmount, voterCredit[voter]);
+    }
+    
+    /**
+     * @notice Burn credits from pool permanently (reduces system total)
+     * @dev Can only burn from available pool, not from granted credits
+     * @param amount Amount of credits to burn from pool
+     */
+    function burnPoolCredits(uint256 amount) external onlyAdmin notInState(State.Active) {
+        if (amount == 0) revert InvalidAmount();
+        if (amount > availableCreditsPool) revert InsufficientPoolBalance(amount, availableCreditsPool);
+        
+        availableCreditsPool -= amount;
+        totalCreditsInSystem -= amount;
+        
+        emit CreditsBurned(address(this), amount, totalCreditsInSystem);
+        emit PoolUpdated(address(this), availableCreditsPool, amount, "burned");
     }
     
     /**
@@ -282,9 +337,12 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Batch add multiple voters (IMPORTANT for Excel upload!)
      * @dev Single transaction = single popup = better UX
-     * @param voters Array of voter addresses to add
+     * @dev Limited to MAX_BATCH_SIZE to prevent out-of-gas errors
+     * @param voters Array of voter addresses to add (max 500)
      */
     function batchAddVoters(address[] calldata voters) external onlyAdmin notInState(State.Active) {
+        if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
+        
         for (uint256 i = 0; i < voters.length; i++) {
             if (voters[i] == address(0)) revert ZeroAddress();
             voterVersion[voters[i]] = voterRegistryVersion;
@@ -293,94 +351,164 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Batch grant credits to multiple voters
-     * @dev Uses pool first, then adds new credits. Efficient for Excel upload.
-     * @param voters Array of voter addresses
-     * @param amounts Array of credit amounts (same length as voters)
+     * @notice Batch set credits for multiple voters (SET behavior, not ADD)
+     * @dev Uses pool first, then adds new credits. Skips duplicate voters.
+     * @param voters Array of voter addresses (max 500)
+     * @param amounts Array of credit amounts to SET (same length as voters)
      */
     function batchGrantCredits(
         address[] calldata voters,
         uint256[] calldata amounts
     ) external onlyAdmin notInState(State.Active) {
         if (voters.length != amounts.length) revert InvalidAmount();
+        if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
         
-        uint256 totalGrantAmount = 0;
+        uint256 totalIncrease = 0;
+        uint256 totalDecrease = 0;
         
-        // First pass: update voter balances and calculate total
+        // Track processed voters to skip duplicates
+        mapping(address => bool) memory processed;
+        
+        // First pass: calculate net change and update voter balances
         for (uint256 i = 0; i < voters.length; i++) {
-            if (amounts[i] == 0) revert InvalidAmount();
             if (!_isVoterEligible(voters[i])) revert VoterNotEligible();
             
-            voterCredit[voters[i]] += amounts[i];
-            totalGrantAmount += amounts[i];
+            // Skip duplicate voters in same batch
+            if (processed[voters[i]]) continue;
+            processed[voters[i]] = true;
             
-            emit CreditGranted(address(this), voters[i], amounts[i], voterCredit[voters[i]]);
+            uint256 currentCredit = voterCredit[voters[i]];
+            uint256 newAmount = amounts[i];
+            
+            if (newAmount == currentCredit) continue; // No change
+            
+            if (newAmount > currentCredit) {
+                // Increase
+                uint256 increaseAmount = newAmount - currentCredit;
+                totalIncrease += increaseAmount;
+            } else {
+                // Decrease
+                uint256 decreaseAmount = currentCredit - newAmount;
+                totalDecrease += decreaseAmount;
+            }
+            
+            voterCredit[voters[i]] = newAmount;
+            emit CreditUpdated(address(this), voters[i], currentCredit, newAmount);
+            emit CreditGranted(address(this), voters[i], newAmount, voterCredit[voters[i]]);
         }
         
-        // Second pass: smart allocation from pool + system
-        totalCreditsGranted += totalGrantAmount;
+        // Handle decreases first (add to pool)
+        if (totalDecrease > 0) {
+            totalCreditsGranted -= totalDecrease;
+            availableCreditsPool += totalDecrease;
+            emit PoolUpdated(address(this), availableCreditsPool, totalDecrease, "batch-grant-decrease");
+        }
         
-        if (availableCreditsPool >= totalGrantAmount) {
-            // Pool covers all - use pool credits
-            availableCreditsPool -= totalGrantAmount;
-        } else if (availableCreditsPool > 0) {
-            // Pool partially covers - use all pool + add remainder
-            uint256 newCreditsNeeded = totalGrantAmount - availableCreditsPool;
-            availableCreditsPool = 0;
-            totalCreditsInSystem += newCreditsNeeded;
-        } else {
-            // Pool empty - add all as new credits
-            totalCreditsInSystem += totalGrantAmount;
+        // Then handle increases (use pool first)
+        if (totalIncrease > 0) {
+            totalCreditsGranted += totalIncrease;
+            
+            if (availableCreditsPool >= totalIncrease) {
+                availableCreditsPool -= totalIncrease;
+                emit PoolUpdated(address(this), availableCreditsPool, totalIncrease, "batch-grant-from-pool");
+            } else if (availableCreditsPool > 0) {
+                uint256 fromPool = availableCreditsPool;
+                uint256 newCreditsNeeded = totalIncrease - fromPool;
+                
+                availableCreditsPool = 0;
+                totalCreditsInSystem += newCreditsNeeded;
+                
+                emit PoolUpdated(address(this), 0, fromPool, "batch-grant-partial-pool");
+            } else {
+                totalCreditsInSystem += totalIncrease;
+            }
         }
     }
     
     /**
-     * @notice Batch add voters AND grant credits in ONE transaction
-     * @dev MOST EFFICIENT for Excel upload (add + grant = 1 popup!)
-     * @dev Uses pool first before adding new credits to system
-     * @param voters Array of voter addresses
-     * @param credits Array of credit amounts
+     * @notice Batch add voters AND set credits in ONE transaction
+     * @dev MOST EFFICIENT for Excel upload (add + set = 1 popup!)
+     * @dev Uses SET behavior for credits, skips duplicate voters
+     * @param voters Array of voter addresses (max 500)
+     * @param credits Array of credit amounts to SET
      */
     function batchAddVotersWithCredits(
         address[] calldata voters,
         uint256[] calldata credits
     ) external onlyAdmin notInState(State.Active) {
         if (voters.length != credits.length) revert InvalidAmount();
+        if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
         
-        uint256 totalGrantAmount = 0;
+        uint256 totalIncrease = 0;
+        uint256 totalDecrease = 0;
+        
+        // Track processed voters to skip duplicates
+        mapping(address => bool) memory processed;
         
         for (uint256 i = 0; i < voters.length; i++) {
             if (voters[i] == address(0)) revert ZeroAddress();
-            if (credits[i] == 0) revert InvalidAmount();
             
-            // Add voter
-            voterVersion[voters[i]] = voterRegistryVersion;
-            emit VoterAdded(address(this), voters[i]);
+            // Skip duplicate voters in same batch
+            if (processed[voters[i]]) continue;
+            processed[voters[i]] = true;
             
-            // Grant credit
-            voterCredit[voters[i]] += credits[i];
-            totalGrantAmount += credits[i];
-            emit CreditGranted(address(this), voters[i], credits[i], voterCredit[voters[i]]);
+            // Add voter if not already eligible
+            if (!_isVoterEligible(voters[i])) {
+                voterVersion[voters[i]] = voterRegistryVersion;
+                emit VoterAdded(address(this), voters[i]);
+            }
+            
+            // SET credit (not add)
+            uint256 currentCredit = voterCredit[voters[i]];
+            uint256 newAmount = credits[i];
+            
+            if (newAmount == currentCredit) continue; // No change
+            
+            if (newAmount > currentCredit) {
+                uint256 increaseAmount = newAmount - currentCredit;
+                totalIncrease += increaseAmount;
+            } else {
+                uint256 decreaseAmount = currentCredit - newAmount;
+                totalDecrease += decreaseAmount;
+            }
+            
+            voterCredit[voters[i]] = newAmount;
+            emit CreditUpdated(address(this), voters[i], currentCredit, newAmount);
+            emit CreditGranted(address(this), voters[i], newAmount, voterCredit[voters[i]]);
         }
         
-        // Smart allocation from pool + system
-        totalCreditsGranted += totalGrantAmount;
+        // Handle decreases first (add to pool)
+        if (totalDecrease > 0) {
+            totalCreditsGranted -= totalDecrease;
+            availableCreditsPool += totalDecrease;
+            emit PoolUpdated(address(this), availableCreditsPool, totalDecrease, "batch-add-decrease");
+        }
         
-        if (availableCreditsPool >= totalGrantAmount) {
-            availableCreditsPool -= totalGrantAmount;
-        } else if (availableCreditsPool > 0) {
-            uint256 newCreditsNeeded = totalGrantAmount - availableCreditsPool;
-            availableCreditsPool = 0;
-            totalCreditsInSystem += newCreditsNeeded;
-        } else {
-            totalCreditsInSystem += totalGrantAmount;
+        // Then handle increases (use pool first)
+        if (totalIncrease > 0) {
+            totalCreditsGranted += totalIncrease;
+            
+            if (availableCreditsPool >= totalIncrease) {
+                availableCreditsPool -= totalIncrease;
+                emit PoolUpdated(address(this), availableCreditsPool, totalIncrease, "batch-add-from-pool");
+            } else if (availableCreditsPool > 0) {
+                uint256 fromPool = availableCreditsPool;
+                uint256 newCreditsNeeded = totalIncrease - fromPool;
+                
+                availableCreditsPool = 0;
+                totalCreditsInSystem += newCreditsNeeded;
+                
+                emit PoolUpdated(address(this), 0, fromPool, "batch-add-partial-pool");
+            } else {
+                totalCreditsInSystem += totalIncrease;
+            }
         }
     }
     
     /**
      * @notice Batch add multiple candidates
      * @dev Single transaction for adding many candidates from Excel
-     * @param candidateIds Array of candidate IDs
+     * @param candidateIds Array of candidate IDs (max 500)
      * @param names Array of candidate names (same length)
      */
     function batchAddCandidates(
@@ -388,6 +516,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         string[] calldata names
     ) external onlyAdmin notInState(State.Active) {
         if (candidateIds.length != names.length) revert InvalidAmount();
+        if (candidateIds.length > MAX_BATCH_SIZE) revert ArrayTooLarge(candidateIds.length, MAX_BATCH_SIZE);
         
         for (uint256 i = 0; i < candidateIds.length; i++) {
             candidateVersion[candidateIds[i]] = candidateRegistryVersion;
@@ -397,34 +526,13 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
     
     /**
-     * @notice Remove voter and refund their credits to pool
-     * @dev Credits returned to availableCreditsPool for reuse
-     */
-    function removeVoterWithRefund(address voter) external onlyAdmin notInState(State.Active) {
-        uint256 refundAmount = voterCredit[voter];
-        
-        // Remove voter
-        voterVersion[voter] = 0;
-        voterCredit[voter] = 0;
-        
-        // Return credits to pool
-        if (refundAmount > 0) {
-            totalCreditsGranted -= refundAmount;
-            availableCreditsPool += refundAmount;
-        }
-        
-        emit VoterRemoved(address(this), voter);
-        if (refundAmount > 0) {
-            emit CreditGranted(address(this), voter, 0, 0); // Signal credit reset
-        }
-    }
-    
-    /**
      * @notice Remove all voters with addresses provided
      * @dev Credits returned to pool for reuse. Efficient batch cleanup.
-     * @param voters Array of voter addresses to remove
+     * @param voters Array of voter addresses to remove (max 500)
      */
     function batchRemoveVoters(address[] calldata voters) external onlyAdmin notInState(State.Active) {
+        if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
+        
         uint256 totalRefund = 0;
         
         for (uint256 i = 0; i < voters.length; i++) {
@@ -444,15 +552,19 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         if (totalRefund > 0) {
             totalCreditsGranted -= totalRefund;
             availableCreditsPool += totalRefund;
+            
+            emit PoolUpdated(address(this), availableCreditsPool, totalRefund, "batch-remove-refund");
         }
     }
     
     /**
      * @notice Remove all candidates with IDs provided
      * @dev Use for cleanup/reset specific candidates
-     * @param candidateIds Array of candidate IDs to remove
+     * @param candidateIds Array of candidate IDs to remove (max 500)
      */
     function batchRemoveCandidates(uint256[] calldata candidateIds) external onlyAdmin notInState(State.Active) {
+        if (candidateIds.length > MAX_BATCH_SIZE) revert ArrayTooLarge(candidateIds.length, MAX_BATCH_SIZE);
+        
         for (uint256 i = 0; i < candidateIds.length; i++) {
             candidateVersion[candidateIds[i]] = 0;
             delete candidateName[candidateIds[i]];
@@ -495,12 +607,14 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Close round and declare winner
+     * @dev Saves winner name snapshot for historical integrity
      */
     function closeRound(uint256 winnerId) external onlyAdmin inState(State.Ended) {
         if (!_isCandidateValid(winnerId)) revert CandidateNotFound();
         
         RoundSummary storage summary = roundSummaries[currentRound];
         summary.winnerId = winnerId;
+        summary.winnerName = candidateName[winnerId]; // Save snapshot!
         summary.totalVotesWeight = totalCreditsUsed;
         summary.closed = true;
         
@@ -530,13 +644,13 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Prepare next round without resetting voter/candidate registry
-     * @dev Preserves pool, resets granted/used for fresh allocation
+     * @dev Preserves ALL credit state: pool, system, granted, and voter balances
+     * @dev Only resets totalCreditsUsed for fresh vote tracking
      */
     function prepareNextRound() external onlyAdmin inState(State.Closed) {
-        // Reset credit counters for new round (PRESERVE pool and system total)
-        totalCreditsGranted = 0;
+        // Reset ONLY used credits for new round
+        // PRESERVE: totalCreditsInSystem, availableCreditsPool, totalCreditsGranted, voterCredit[]
         totalCreditsUsed = 0;
-        // Note: totalCreditsInSystem and availableCreditsPool are NOT reset!
         
         // Change state back to Inactive for setup
         state = State.Inactive;
@@ -604,24 +718,103 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Withdraw room deposit from SponsorVault
      * @dev Only callable by roomAdmin when not Active
+     * @param amount Amount of ETH to withdraw (in wei)
      */
     function withdrawDeposit(uint256 amount) external onlyAdmin notInState(State.Active) nonReentrant {
-        // Call SponsorVault withdraw - it will transfer back to this contract
-        // Then forward to roomAdmin
+        if (amount == 0) revert InvalidAmount();
         
         uint256 balanceBefore = address(this).balance;
         
-        // SponsorVault will validate balance and send back to this contract
-        (bool success, ) = sponsorVault.call(
+        // Call SponsorVault withdraw - it will transfer back to this contract
+        (bool success, bytes memory returnData) = sponsorVault.call(
             abi.encodeWithSignature("withdraw(address,uint256)", address(this), amount)
         );
-        require(success, "Vault withdrawal failed");
+        
+        if (!success) {
+            revert VaultWithdrawalFailed(returnData);
+        }
         
         uint256 received = address(this).balance - balanceBefore;
         
         // Forward to roomAdmin
         (bool sent, ) = roomAdmin.call{value: received}("");
-        require(sent, "Transfer to admin failed");
+        if (!sent) {
+            revert TransferToAdminFailed();
+        }
+    }
+    
+    // ============ Pool Query Functions ============
+    
+    /**
+     * @notice Get comprehensive pool and credit status
+     * @return systemTotal Total credits ever added to system
+     * @return poolAvailable Credits in pool ready for reuse
+     * @return currentlyGranted Credits currently held by active voters
+     * @return totalUsed Credits consumed in votes
+     */
+    function getPoolStatus() external view returns (
+        uint256 systemTotal,
+        uint256 poolAvailable,
+        uint256 currentlyGranted,
+        uint256 totalUsed
+    ) {
+        return (
+            totalCreditsInSystem,
+            availableCreditsPool,
+            totalCreditsGranted,
+            totalCreditsUsed
+        );
+    }
+    
+    /**
+     * @notice Check if pool can cover a specific grant amount
+     * @param amount Amount to check
+     * @return canCover True if pool has enough credits
+     */
+    function canPoolCover(uint256 amount) external view returns (bool canCover) {
+        return availableCreditsPool >= amount;
+    }
+    
+    /**
+     * @notice Calculate how credits will be allocated for a grant
+     * @param amount Amount to grant
+     * @return fromPool Credits taken from pool
+     * @return newCredits New credits that need to be added to system
+     */
+    function calculateCreditAllocation(uint256 amount) external view returns (
+        uint256 fromPool,
+        uint256 newCredits
+    ) {
+        if (availableCreditsPool >= amount) {
+            return (amount, 0);
+        } else if (availableCreditsPool > 0) {
+            return (availableCreditsPool, amount - availableCreditsPool);
+        } else {
+            return (0, amount);
+        }
+    }
+    
+    /**
+     * @notice Calculate new credits needed beyond pool
+     * @param amount Amount to grant
+     * @return needed New credits needed (0 if pool covers all)
+     */
+    function newCreditsNeeded(uint256 amount) external view returns (uint256 needed) {
+        if (availableCreditsPool >= amount) {
+            return 0;
+        }
+        return amount - availableCreditsPool;
+    }
+    
+    /**
+     * @notice Get credit utilization percentage (1-100)
+     * @return utilization Percentage of system credits currently in use (not in pool)
+     */
+    function getCreditUtilization() external view returns (uint256 utilization) {
+        if (totalCreditsInSystem == 0) return 0;
+        
+        uint256 inUse = totalCreditsInSystem - availableCreditsPool;
+        return (inUse * 100) / totalCreditsInSystem;
     }
     
     /**

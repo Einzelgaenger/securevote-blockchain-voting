@@ -111,19 +111,7 @@ contract RoomFactory is Ownable {
         emit RoomRegistered(room, msg.sender, msg.value, roomName);
     }
     
-    /**
-     * @notice Predict room address before deployment
-     * @dev Useful for off-chain preparation
-     */
-    function predictRoomAddress(uint256 nonce) external view returns (address) {
-        // Note: This is simplified - actual prediction requires salt mechanism
-        // For basic Clones.clone(), address is deterministic based on implementation
-        return Clones.predictDeterministicAddress(
-            votingRoomImplementation,
-            bytes32(nonce),
-            address(this)
-        );
-    }
+    // ============ Query Functions ============
     
     /**
      * @notice Get total number of rooms created
@@ -169,9 +157,29 @@ contract RoomFactory is Ownable {
     
     /**
      * @notice Get all rooms where user is registered as voter
-     * @dev Requires calling VotingRoom.isVoterEligible() for each room
+     * @dev ⚠️ WARNING: This function is EXPENSIVE and may FAIL for large datasets!
+     * @dev - Loops through ALL rooms (O(n) complexity)
+     * @dev - Makes external call for each room (expensive gas)
+     * @dev - Can hit gas limit if > 1000 rooms exist
+     * @dev - May timeout or run out of gas
+     * 
+     * @dev 🔴 PRODUCTION RECOMMENDATION:
+     * @dev Use off-chain indexing (The Graph, Alchemy Subgraphs) instead.
+     * @dev This function kept for backward compatibility and small datasets only.
+     * 
+     * @dev Example off-chain query (The Graph):
+     * @dev ```graphql
+     * @dev {
+     * @dev   voter(id: "0x123...") {
+     * @dev     rooms { id, name, admin }
+     * @dev   }
+     * @dev }
+     * @dev ```
+     * 
+     * @param voter Address of voter to search for
+     * @return rooms Array of room addresses where voter is eligible
      */
-    function getRoomsByVoter(address voter) external view returns (address[] memory) {
+    function getRoomsByVoter(address voter) external view returns (address[] memory rooms) {
         uint256 count = 0;
         
         // Count rooms where voter is eligible
