@@ -1,5 +1,37 @@
-# 🚀 LOVABLE AI - Detailed Project Instructions
+# 🚀 BOLT AI - Detailed Project Instructions
 # Blockchain Voting App v2 - Frontend Development
+
+---
+
+## ⚡ IMPORTANT: HOW TO WORK WITH BOLT AI
+
+### **Best Practices for Reliable Editing**
+
+1. **📌 Scope each prompt to a single change**
+   - Focus on ONE specific feature or component at a time
+   - Example: "Add RainbowKit ConnectButton to navbar" instead of "Setup wallet + routing + dashboard"
+   - Avoid multi-step requests in larger applications
+
+2. **📖 Always reference README.md**
+   - Before each task, ask Bolt to read the README.md file
+   - This helps Bolt understand project context and structure
+   - Keep README.md updated with latest changes
+
+3. **🔄 Reset context between major tasks**
+   - Use `/clear` command in chatbox when switching to new area
+   - After clearing: "Read README.md and then [your new instruction]"
+   - This refreshes working context for better accuracy
+
+4. **🐛 Use debug logging for errors**
+   - Ask Bolt to add console.log() statements to relevant code
+   - Open app in separate browser tab
+   - Press `CTRL + SHIFT + I` (Windows) or `CMD + OPTION + J` (macOS)
+   - Copy console logs and paste back to Bolt for investigation
+
+5. **✂️ Break down large files (500+ lines)**
+   - Request refactoring when files get too large
+   - Prompt: "Please refactor [filename] by splitting it into multiple files. Add comments explaining the purpose of each new file. Keep the original file as a router so the app continues to function."
+   - Smaller files = fewer editing errors
 
 ---
 
@@ -7,9 +39,19 @@
 
 **Project Name:** SecureVote - Blockchain Voting Application  
 **Version:** v2 (Production Ready)  
-**Tech Stack:** Next.js 14, TypeScript, Wagmi v2, Viem, RainbowKit, Tailwind CSS, Supabase  
+**Tech Stack:** React 18 + Vite, TypeScript, Wagmi v2, Viem, RainbowKit 2.2.10, Tailwind CSS, shadcn/ui, Supabase  
 **Blockchain:** Ethereum Sepolia Testnet  
 **Purpose:** Gasless credit-based weighted voting system for thesis project
+
+**Current Status:**
+- ✅ Smart contracts deployed on Sepolia
+- ✅ Supabase database setup complete (9 tables, 3 views, 3 functions)
+- ✅ Wagmi + RainbowKit configured
+- ✅ Contract read hooks implemented (10 hooks)
+- ✅ Supabase query hooks implemented (4 hooks)
+- ✅ Basic UI pages created (7 routes)
+- ⚠️ Write hooks needed (createRoom, addVoter, castVote, etc.)
+- ⚠️ Gasless voting (EIP-2771) not implemented yet
 
 ---
 
@@ -37,9 +79,57 @@ This is a **multi-room voting platform** with 3 user roles:
 
 ## 📁 PROJECT STRUCTURE & FILES
 
+### **Important:** All file paths are relative to repository root: 
+`c:\Users\shaquill.razaq\OneDrive - Bina Nusantara\Thesis\BlockchainVotingApp_1\`
+
+### **Frontend Source Code**
+
+**Location:** `lovable_ai/vote-free-main/vote-free-main/src/`
+
+```
+src/
+├── components/
+│   ├── landing/          # Landing page components
+│   │   ├── Navbar.tsx
+│   │   ├── HeroSection.tsx
+│   │   ├── FeaturesSection.tsx
+│   │   └── Footer.tsx
+│   ├── dashboard/        # Dashboard sidebar & header
+│   └── ui/              # shadcn/ui components
+├── config/
+│   ├── wagmi.ts         # Wagmi + RainbowKit config
+│   ├── contracts.ts     # Contract addresses
+│   ├── abis.ts          # Contract ABIs
+│   └── supabase.ts      # Supabase client
+├── hooks/               # Custom React hooks
+│   ├── useIsFactoryOwner.ts
+│   ├── useRoomData.ts
+│   ├── useFactorySettings.ts
+│   ├── useVaultData.ts
+│   ├── useRooms.ts      # Supabase query
+│   ├── useLiveVoteTally.ts
+│   └── ...
+├── pages/
+│   ├── Index.tsx        # Landing page
+│   ├── CreatorDashboard.tsx
+│   ├── RoomAdmin.tsx
+│   ├── VoterDashboard.tsx
+│   ├── RoomExplorer.tsx
+│   ├── RoomDetails.tsx
+│   └── CreateRoom.tsx
+├── contracts/           # ABI JSON files
+│   ├── MinimalForwarder.json
+│   ├── SponsorVault.json
+│   ├── VotingRoom.json
+│   └── RoomFactory.json
+├── App.tsx             # Main routing
+├── main.tsx            # Entry point with providers
+└── index.css           # Global styles
+```
+
 ### **Smart Contracts (Already Deployed)**
 
-**Location:** `/contracts/v2/`
+**Location:** `contracts/v2/`
 
 ```
 MinimalForwarder.sol  - ERC-2771 trusted forwarder for gasless transactions
@@ -50,7 +140,7 @@ RoomFactory.sol       - Factory for creating voting room clones
 
 ### **Contract Addresses (Sepolia Testnet)**
 
-**Location:** `/addresses/2_productionReady.txt` and `/addresses/3_sepoliaAddresses.txt`
+**Location:** `addresses/2_productionReady.txt`
 
 ```
 MinimalForwarder: 0xdE41F486df655AdA306166a601166DDA5e69e241
@@ -68,20 +158,20 @@ Platform Creator: 0x04A3baCFd9D57E2fA661064c03C1c1774A8cEb97 (for testing)
 
 ### **ABIs**
 
-**Location:** `/ABI/v2/`
+**Location:** `lovable_ai/vote-free-main/vote-free-main/src/contracts/`
 
 ```
-MinimalForwarder.abi
-SponsorVault.abi
-VotingRoom.abi
-RoomFactory.abi
+MinimalForwarder.json
+SponsorVault.json
+VotingRoom.json
+RoomFactory.json
 ```
 
-**Usage:** Import these ABIs in your contract hooks
+**Usage:** Already imported in `src/config/abis.ts`
 
 ### **RPC Provider**
 
-**Location:** `/database/alchemy.txt`
+**Location:** `.env.local` (already configured)
 
 ```
 Network: Ethereum Sepolia Testnet
@@ -92,12 +182,7 @@ API Key: bzeNYEyzUnid7G8Yu0C35
 
 ### **Database (Supabase - Already Setup)**
 
-**Location:** `/database/supabase credentials.txt`
-
-```
-Organization: razaqshaquille
-Project: securevote
-Password: Passwordsecurevote1!
+**Location:** `database/SUPABASE_SCHEMA.sql` (already executed)
 ```
 
 **Tables Created (9 tables):**
@@ -1525,12 +1610,102 @@ RELAYER_PRIVATE_KEY=0x... # Backend only, never expose
 
 **Read these for detailed information:**
 
-1. **Contract Lifecycle:** `/manuals/v2/VOTING_ROOM_LIFECYCLE.md`
-2. **Credit Pooling:** `/manuals/v2/CREDIT_POOLING_SYSTEM.md`
-3. **v1 vs v2 Changes:** `/manuals/v2/V1_VS_V2_CHANGES.md`
-4. **Security Audit:** `/manuals/v2/FINAL_AUDIT_REPORT.md`
-5. **Database Schema:** `/database/SUPABASE_SCHEMA.sql`
-6. **Setup Guide:** `/database/SUPABASE_SETUP_GUIDE.md`
+1. **Contract Lifecycle:** `manuals/v2/VOTING_ROOM_LIFECYCLE.md`
+2. **Credit Pooling:** `manuals/v2/CREDIT_POOLING_SYSTEM.md`
+3. **v1 vs v2 Changes:** `manuals/v2/V1_VS_V2_CHANGES.md`
+4. **Security Audit:** `manuals/v2/FINAL_AUDIT_REPORT.md`
+5. **Database Schema:** `database/SUPABASE_SCHEMA.sql`
+6. **Setup Guide:** `database/SUPABASE_SETUP_GUIDE.md`
+7. **Integration Progress:** `web3_progress/2_INTEGRATION_COMPLETE.md`
+8. **UI Fixes:** `web3_progress/3_UI_FIXES_AND_WALLET_INTEGRATION.md`
+
+---
+
+## ⚡ WORKING WITH BOLT AI - TASK BREAKDOWN
+
+### **IMPORTANT:** Break work into single-task prompts
+
+❌ **DON'T DO THIS (too broad):**
+> "Build the complete voting system with wallet connection, room creation, and voting functionality"
+
+✅ **DO THIS (single-focused tasks):**
+
+**Task 1:** "Add a 'Create Room' button to the CreatorDashboard header that navigates to /create-room"
+
+**Task 2:** "Implement the createRoom transaction in CreateRoom.tsx using useWriteContract hook with RoomFactory ABI"
+
+**Task 3:** "Add toast notification when room creation succeeds with room address and Etherscan link"
+
+### **Recommended Task Sequence:**
+
+#### **Phase 1: Write Hooks (Each task = 1 hook)**
+1. Create `hooks/useCreateRoom.ts` - Hook for creating room transaction
+2. Create `hooks/useAddVoter.ts` - Hook for adding single voter
+3. Create `hooks/useBatchAddVoters.ts` - Hook for batch voter upload
+4. Create `hooks/useAddCandidate.ts` - Hook for adding candidate
+5. Create `hooks/useGrantCredit.ts` - Hook for granting credits
+6. Create `hooks/useCastVote.ts` - Hook for voting transaction
+
+#### **Phase 2: CreatorDashboard Features**
+1. Add "Change Registration Fee" form with transaction
+2. Add "Update Platform Fee" form with transaction
+3. Add withdrawal functionality for vault
+4. Connect real data to all stats cards
+
+#### **Phase 3: RoomAdmin Features**
+1. Add Excel upload component for voters
+2. Implement batch voter addition with transaction
+3. Add candidate management with add/remove
+4. Add state transition buttons (Activate/End/Close)
+5. Add credit pool management panel
+
+#### **Phase 4: VoterDashboard Features**
+1. Fetch and display eligible rooms from Supabase
+2. Implement voting interface with credit allocation
+3. Add vote history table
+4. Add real-time vote tally updates
+
+#### **Phase 5: Gasless Voting (Advanced)**
+1. Setup EIP-712 typed data signing
+2. Create backend relayer API route
+3. Integrate meta-transaction submission
+4. Add loading states for gasless flow
+
+### **After Each Task:**
+- Test in browser
+- Check console for errors
+- If errors occur, use debug logging (ask Bolt to add console.log)
+- Use `/clear` command before starting next major phase
+
+---
+
+## 🛠️ DEBUGGING WITH BOLT AI
+
+When you encounter errors:
+
+1. **Ask Bolt to add debug logging:**
+   ```
+   "Add console.log statements to track the createRoom transaction flow. 
+   Log the input parameters, contract address, and transaction hash."
+   ```
+
+2. **Open browser console:**
+   - Press `CTRL + SHIFT + I` (Windows) or `CMD + OPTION + J` (macOS)
+   - Reproduce the error
+   - Copy all console output
+
+3. **Provide logs to Bolt:**
+   ```
+   "The createRoom transaction failed. Here are the console logs:
+   [paste full console output]
+   
+   Please investigate and fix the issue."
+   ```
+
+4. **Check Wagmi hooks:**
+   - Look for `error` object in hook returns
+   - Check `isLoading`, `isSuccess`, `isError` states
+   - Verify contract address and ABI are correct
 
 ---
 
@@ -1540,39 +1715,39 @@ Before considering the project complete:
 
 ### **Functionality:**
 - [ ] Wallet connection works (RainbowKit)
-- [ ] Platform creator can manage factory settings
-- [ ] Room admin can create and manage rooms
+- [ ] Factory owner sees CreatorDashboard (auto-redirect from landing)
+- [ ] Regular wallet sees VoterDashboard (auto-redirect)
+- [ ] Create room works with 0.01 ETH payment
 - [ ] Excel upload works for voters/candidates (400+ items)
 - [ ] Credit pooling system displays correctly
-- [ ] Voting works gaslessly (EIP-2771)
-- [ ] Real-time vote updates work
-- [ ] State transitions work correctly
+- [ ] Voting transaction works (with gas initially, gasless later)
+- [ ] Real-time vote updates work (Supabase subscriptions)
+- [ ] State transitions work (Activate → End → Close)
 - [ ] Multi-round support works
-- [ ] Historical data preserved
+- [ ] Historical data preserved in Supabase
 
 ### **UI/UX:**
 - [ ] All pages responsive (mobile + desktop)
-- [ ] Loading states for all async operations
+- [ ] Loading states for all transactions (spinners)
 - [ ] Error handling with user-friendly messages
-- [ ] Success confirmations with animations
-- [ ] Addresses truncated with copy buttons
-- [ ] Transaction links to Etherscan
-- [ ] Charts and analytics display correctly
+- [ ] Success confirmations with toast notifications
+- [ ] Addresses truncated with copy buttons (0x1234...5678)
+- [ ] Transaction links to Sepolia Etherscan
+- [ ] Charts display correctly (if implemented)
 - [ ] Empty states have helpful messages
 
 ### **Security:**
-- [ ] Access control enforced (creator, admin, voter)
-- [ ] No private keys in frontend
-- [ ] RLS policies working (Supabase)
-- [ ] Transaction confirmations required
+- [ ] Access control enforced (useIsFactoryOwner, useIsRoomAdmin)
+- [ ] No private keys in frontend code
+- [ ] Transaction confirmations required (user must sign)
 - [ ] Input validation on all forms
+- [ ] Error boundaries catch React errors
 
 ### **Performance:**
-- [ ] Supabase used for read operations (not blockchain)
-- [ ] Real-time subscriptions efficient
-- [ ] Large lists paginated
-- [ ] Images optimized
-- [ ] Code split by route
+- [ ] Supabase used for listing rooms (not blockchain iteration)
+- [ ] Real-time subscriptions working efficiently
+- [ ] Large voter lists paginated or virtualized
+- [ ] Code split by route (lazy loading)
 
 ---
 
@@ -1581,35 +1756,42 @@ Before considering the project complete:
 The project is complete when:
 
 1. ✅ **Platform Creator** can:
-   - View all rooms
-   - Manage factory settings
-   - Collect platform fees
-   - View analytics
+   - Auto-redirect to `/creator` after wallet connection
+   - View all rooms in table with real data
+   - See live vault balance from SponsorVault contract
+   - Change registration fee (transaction)
+   - Collect platform fees (transaction)
 
 2. ✅ **Room Admin** can:
-   - Create rooms (pay 0.01 ETH)
-   - Upload 400+ voters via Excel in 1 tx
-   - Grant/revoke credits with pool logic
-   - Manage voting lifecycle (start/end/close)
-   - View pool metrics
+   - Create rooms (pay 0.01 ETH, get room address)
+   - Navigate to `/admin/:roomAddress` to manage room
+   - Upload 400+ voters via Excel → batch transaction
+   - Add/remove voters individually
+   - Grant/revoke credits with pool recalculation
+   - See pool metrics (total, available, used)
+   - Change room state (buttons: Activate, End, Close)
    - Withdraw vault balance
 
 3. ✅ **Voter** can:
-   - View eligible rooms
-   - Vote gaslessly (0 gas cost)
-   - See live vote counts
+   - Auto-redirect to `/voter` after wallet connection
+   - See list of rooms where eligible (voterCredit > 0)
+   - Click room to see voting interface
+   - Allocate credits to candidates (quadratic cost: k^2)
+   - Submit vote transaction (initially with gas, later gasless)
+   - See confirmation with tx hash → Etherscan link
    - View voting history
 
 4. ✅ **Public** can:
-   - Explore all rooms
-   - View results
-   - See transparency (all votes on-chain)
+   - Browse `/explore` to see all rooms
+   - Click room to see `/explore/:roomAddress` details
+   - View live vote tally (real-time updates)
+   - See room state and round info
 
 5. ✅ **System**:
-   - Credit pooling works (reuse removed credits)
-   - Real-time updates work
-   - Multi-round support works
-   - Data consistency (blockchain + database)
+   - Credit pooling works (removed credits → available pool)
+   - Real-time updates via Supabase subscriptions
+   - Multi-round support (can restart voting after ending)
+   - Data consistency (events indexed to Supabase)
    - Mobile responsive
    - Error handling robust
 
@@ -1617,28 +1799,47 @@ The project is complete when:
 
 ## 🚀 DEPLOYMENT NOTES
 
-1. **Frontend:** Deploy to Vercel (recommended)
+1. **Frontend:** Deploy to Vercel / Netlify
 2. **Database:** Already on Supabase (production-ready)
-3. **Contracts:** Already deployed to Sepolia
-4. **Relayer:** Deploy backend API routes to Vercel serverless functions
+3. **Contracts:** Already deployed to Sepolia testnet
+4. **Relayer (Future):** Deploy backend API for gasless transactions
 
-**ENV variables must be set in Vercel dashboard**
-
----
-
-## 💬 SUPPORT & QUESTIONS
-
-If Lovable AI needs clarification:
-
-1. Check `/manuals/v2/` documentation
-2. Check `/database/SUPABASE_SCHEMA.sql` for database structure
-3. Check `/ABI/v2/` for contract function signatures
-4. Check `/addresses/` for deployed contract addresses
-
-**Key Principle:** Everything described here is ESSENTIAL. No features are optional or "nice-to-have". All features have been security audited and are production-ready.
+**ENV variables:**
+- Already in `.env.local` for local development
+- Must be set in hosting platform dashboard for production
 
 ---
 
-**Status:** Ready for Lovable AI implementation 🚀  
-**Version:** v2.0  
+## 💬 WORKING WITH BOLT AI - REMEMBER
+
+### **Before Each Task:**
+1. Use `/clear` if switching to new feature area
+2. Ask Bolt to read this instruction file (or README.md)
+3. Give ONE specific task at a time
+
+### **Example Good Prompts:**
+
+✅ "Add a submit button to CreateRoom.tsx that calls the createRoom function from RoomFactory contract. Show loading spinner while transaction pending."
+
+✅ "Create a new hook `hooks/useVoterRooms.ts` that queries Supabase voters table for rooms where voter_address matches connected wallet and voter_credit > 0"
+
+✅ "In RoomExplorer.tsx, add a filter dropdown for room state (All, Active, Inactive, Ended, Closed) that updates the useRooms hook query"
+
+✅ "Add error boundary to App.tsx that catches React errors and shows friendly error message instead of white screen"
+
+### **If File Gets Too Large (500+ lines):**
+
+Ask Bolt:
+> "Please refactor CreatorDashboard.tsx by splitting it into multiple files:
+> - CreatorDashboard.tsx (main router)
+> - components/creator/FactorySettings.tsx (factory settings tab)
+> - components/creator/RoomsList.tsx (rooms table tab)
+> - components/creator/VaultManagement.tsx (vault tab)
+> 
+> Add comments explaining each file's purpose. Keep the original file as router."
+
+---
+
+**Status:** Ready for Bolt AI implementation 🚀  
+**Version:** v2.0 (Updated for Bolt AI)  
 **Last Updated:** January 20, 2026
