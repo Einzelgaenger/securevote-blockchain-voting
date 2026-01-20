@@ -190,11 +190,10 @@ const { candidates, loading } = useCandidates(roomAddress);
 ### Known Issues & Next Steps
 
 #### WalletConnect Project ID
-⚠️ **Action Required:**
-1. Go to https://cloud.walletconnect.com/
-2. Create project
-3. Copy Project ID
-4. Update `VITE_WALLETCONNECT_PROJECT_ID` in `.env.local`
+✅ **COMPLETED:**
+- Project ID: 25801ba773152aa9e14070125007a6c1
+- Updated in `.env.local`
+- Ready for wallet connection testing
 
 #### Missing Write Functions
 The hooks currently only implement **READ** operations. Need to add:
@@ -240,8 +239,8 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 # Alchemy
 VITE_ALCHEMY_API_KEY=bzeNYEyzUnid7G8Yu0C35
 
-# WalletConnect (NEEDS UPDATE)
-VITE_WALLETCONNECT_PROJECT_ID=YOUR_PROJECT_ID
+# WalletConnect
+VITE_WALLETCONNECT_PROJECT_ID=25801ba773152aa9e14070125007a6c1
 ```
 
 ## Architecture Diagram
@@ -274,8 +273,8 @@ VITE_WALLETCONNECT_PROJECT_ID=YOUR_PROJECT_ID
 
 ## Next Priority Tasks
 
-1. **Get WalletConnect Project ID** (5 min)
-2. **Test wallet connection** (10 min)
+1. ~~**Get WalletConnect Project ID**~~ ✅ **DONE** (25801ba773152aa9e14070125007a6c1)
+2. **Test wallet connection** (10 min) ⬅️ **START HERE**
 3. **Create write hooks** (2-3 hours):
    - useCreateRoom
    - useAddVoter
