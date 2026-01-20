@@ -8,65 +8,65 @@ import { Search, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const RoomExplorer = () => {
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Explore Voting Rooms</h1>
-          <p className="text-muted-foreground">Browse all public voting rooms on the platform</p>
-        </div>
+    return (
+        <div className="min-h-screen bg-background">
+            <Navbar />
 
-        {/* Filters */}
-        <div className="mb-6 flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by room name or address..."
-              className="pl-10"
-            />
-          </div>
-          <Select defaultValue="all">
-            <SelectTrigger className="w-full md:w-[200px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Filter by state" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All States</SelectItem>
-              <SelectItem value="active">Active Only</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-              <SelectItem value="ended">Ended</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select defaultValue="newest">
-            <SelectTrigger className="w-full md:w-[200px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Newest First</SelectItem>
-              <SelectItem value="active">Most Active</SelectItem>
-              <SelectItem value="voters">Most Voters</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="container mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-4xl font-bold mb-2">Explore Voting Rooms</h1>
+                    <p className="text-muted-foreground">Browse all public voting rooms on the platform</p>
+                </div>
 
-        {/* Room Cards Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {/* Empty State */}
-          <div className="col-span-full">
-            <Card>
-              <CardContent className="text-center py-12">
-                <p className="text-muted-foreground">No rooms found</p>
-                <p className="text-sm text-muted-foreground mt-2">Rooms will appear here when created</p>
-              </CardContent>
-            </Card>
-          </div>
+                {/* Filters */}
+                <div className="mb-6 flex flex-col md:flex-row gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search by room name or address..."
+                            className="pl-10"
+                        />
+                    </div>
+                    <Select defaultValue="all">
+                        <SelectTrigger className="w-full md:w-[200px]">
+                            <Filter className="h-4 w-4 mr-2" />
+                            <SelectValue placeholder="Filter by state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All States</SelectItem>
+                            <SelectItem value="active">Active Only</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                            <SelectItem value="ended">Ended</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Select defaultValue="newest">
+                        <SelectTrigger className="w-full md:w-[200px]">
+                            <SelectValue placeholder="Sort by" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="newest">Newest First</SelectItem>
+                            <SelectItem value="active">Most Active</SelectItem>
+                            <SelectItem value="voters">Most Voters</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
 
-          {/* Example Room Card (shown when rooms exist) */}
-          {/* <Card className="hover:shadow-lg transition-shadow">
+                {/* Room Cards Grid */}
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {/* Empty State */}
+                    <div className="col-span-full">
+                        <Card>
+                            <CardContent className="text-center py-12">
+                                <p className="text-muted-foreground">No rooms found</p>
+                                <p className="text-sm text-muted-foreground mt-2">Rooms will appear here when created</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Example Room Card (shown when rooms exist) */}
+                    {/* <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="truncate">Room Name</CardTitle>
@@ -102,19 +102,19 @@ const RoomExplorer = () => {
               </div>
             </CardContent>
           </Card> */}
-        </div>
+                </div>
 
-        {/* Pagination (shown when there are many rooms) */}
-        {/* <div className="mt-8 flex justify-center gap-2">
+                {/* Pagination (shown when there are many rooms) */}
+                {/* <div className="mt-8 flex justify-center gap-2">
           <Button variant="outline" disabled>Previous</Button>
           <Button variant="outline">1</Button>
           <Button variant="default">2</Button>
           <Button variant="outline">3</Button>
           <Button variant="outline">Next</Button>
         </div> */}
-      </div>
-    </div>
-  );
+            </div>
+        </div>
+    );
 };
 
 export default RoomExplorer;
