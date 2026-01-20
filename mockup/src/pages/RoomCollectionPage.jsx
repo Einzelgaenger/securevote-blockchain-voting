@@ -33,44 +33,73 @@ export default function RoomCollectionPage() {
         setError(null);
 
         try {
-            let query = supabase
+            // Fetch all rooms
+            const { data: allRooms, error: roomsError } = await supabase
                 .from('rooms')
-                .select(`
-          *,
-          voters(count),
-          candidates(count)
-        `);
+                .select('*')
+                .order(sortBy, { ascending: false });
 
-            // Filter by user role
+            if (roomsError) throw roomsError;
+
+            // Fetch voter rooms
+            const { data: voterRooms, error: voterError } = await supabase
+                .from('voters')
+                .select('room_address')
+                .eq('voter_address', address);
+
+            if (voterError) throw voterError;
+
+            const voterRoomAddresses = voterRooms?.map(v => v.room_address.toLowerCase()) || [];
+
+            // Filter rooms based on user role
+            let filteredRooms = allRooms || [];
+
             if (showAsAdmin && !showAsVoter) {
-                query = query.eq('room_admin', address);
+                filteredRooms = filteredRooms.filter(room =>
+                    room.room_admin?.toLowerCase() === address?.toLowerCase()
+                );
             } else if (showAsVoter && !showAsAdmin) {
-                query = query.in('room_address',
-                    supabase.from('voters')
-                        .select('room_address')
-                        .eq('voter_address', address)
+                filteredRooms = filteredRooms.filter(room =>
+                    voterRoomAddresses.includes(room.room_address?.toLowerCase())
                 );
             } else if (showAsAdmin || showAsVoter) {
-                // Show both admin and voter rooms
-                query = query.or(`room_admin.eq.${address},room_address.in.(${supabase.from('voters')
-                        .select('room_address')
-                        .eq('voter_address', address)
-                    })`);
+                filteredRooms = filteredRooms.filter(room =>
+                    room.room_admin?.toLowerCase() === address?.toLowerCase() ||
+                    voterRoomAddresses.includes(room.room_address?.toLowerCase())
+                );
             }
 
             // Search filter
             if (searchTerm) {
-                query = query.or(`room_name.ilike.%${searchTerm}%,room_address.ilike.%${searchTerm}%`);
+                const term = searchTerm.toLowerCase();
+                filteredRooms = filteredRooms.filter(room =>
+                    room.room_name?.toLowerCase().includes(term) ||
+                    room.room_address?.toLowerCase().includes(term)
+                );
             }
 
-            // Sort
-            query = query.order(sortBy, { ascending: false });
+            // Fetch counts for each room
+            const roomsWithCounts = await Promise.all(
+                filteredRooms.map(async (room) => {
+                    const { count: voterCount } = await supabase
+                        .from('voters')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('room_address', room.room_address);
 
-            const { data, error: fetchError } = await query;
+                    const { count: candidateCount } = await supabase
+                        .from('candidates')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('room_address', room.room_address);
 
-            if (fetchError) throw fetchError;
+                    return {
+                        ...room,
+                        voters: [{ count: voterCount || 0 }],
+                        candidates: [{ count: candidateCount || 0 }]
+                    };
+                })
+            );
 
-            setRooms(data || []);
+            setRooms(roomsWithCounts);
         } catch (err) {
             setError(err.message);
             console.error('Error fetching rooms:', err);

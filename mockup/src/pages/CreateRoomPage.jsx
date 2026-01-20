@@ -3,8 +3,8 @@ import { useNavigate, NavLink } from 'react-router-dom';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '../config/contracts';
-import RoomFactoryABI from '../../../contracts/ABI/v2/RoomFactory.json';
-import SponsorVaultABI from '../../../contracts/ABI/v2/SponsorVault.json';
+import RoomFactoryABI from '../contracts/ABI/v2/RoomFactory.json';
+import SponsorVaultABI from '../contracts/ABI/v2/SponsorVault.json';
 
 export default function CreateRoomPage() {
     const { address, isConnected } = useAccount();

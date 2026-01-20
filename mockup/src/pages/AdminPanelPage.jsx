@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '../config/contracts';
-import SponsorVaultABI from '../../../contracts/ABI/v2/SponsorVault.json';
+import SponsorVaultABI from '../contracts/ABI/v2/SponsorVault.json';
 
 export default function AdminPanelPage() {
     const { address, isConnected } = useAccount();

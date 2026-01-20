@@ -4,7 +4,7 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { formatEther, parseEther } from 'viem';
 import { supabase } from '../config/supabase';
 import { CONTRACT_ADDRESSES } from '../config/contracts';
-import VotingRoomABI from '../../../contracts/ABI/v2/VotingRoom.json';
+import VotingRoomABI from '../contracts/ABI/v2/VotingRoom.json';
 
 const STATE_LABELS = { 0: 'Inactive', 1: 'Active', 2: 'Ended', 3: 'Closed' };
 
