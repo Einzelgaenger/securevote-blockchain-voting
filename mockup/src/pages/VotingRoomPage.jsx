@@ -63,6 +63,37 @@ export default function VotingRoomPage() {
         functionName: 'maxCostPerVoteWei',
     });
 
+    const { data: totalCreditsInSystem } = useReadContract({
+        address: roomAddress,
+        abi: VotingRoomABI,
+        functionName: 'totalCreditsInSystem',
+    });
+
+    const { data: availableCreditsPool } = useReadContract({
+        address: roomAddress,
+        abi: VotingRoomABI,
+        functionName: 'availableCreditsPool',
+    });
+
+    const { data: totalCreditsGranted } = useReadContract({
+        address: roomAddress,
+        abi: VotingRoomABI,
+        functionName: 'totalCreditsGranted',
+    });
+
+    const { data: totalCreditsUsed } = useReadContract({
+        address: roomAddress,
+        abi: VotingRoomABI,
+        functionName: 'totalCreditsUsed',
+    });
+
+    const { data: isVoterEligible } = useReadContract({
+        address: roomAddress,
+        abi: VotingRoomABI,
+        functionName: 'isVoterEligible',
+        args: address ? [address] : undefined,
+    });
+
     const { writeContract, data: hash, error, isPending } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -198,6 +229,52 @@ export default function VotingRoomPage() {
         });
     };
 
+    const handleRemoveVoter = (voterAddr) => {
+        if (confirm(`Remove voter ${voterAddr}?`)) {
+            writeContract({
+                address: roomAddress,
+                abi: VotingRoomABI,
+                functionName: 'removeVoter',
+                args: [voterAddr],
+            });
+        }
+    };
+
+    const handleRemoveCandidate = (candId) => {
+        if (confirm(`Remove candidate ID ${candId}?`)) {
+            writeContract({
+                address: roomAddress,
+                abi: VotingRoomABI,
+                functionName: 'removeCandidate',
+                args: [BigInt(candId)],
+            });
+        }
+    };
+
+    const handleSetMaxCost = () => {
+        const newCost = prompt('Enter new max cost per vote (in ETH):');
+        if (newCost) {
+            writeContract({
+                address: roomAddress,
+                abi: VotingRoomABI,
+                functionName: 'setMaxCostPerVote',
+                args: [parseEther(newCost)],
+            });
+        }
+    };
+
+    const handleBurnPoolCredits = () => {
+        const amount = prompt('Enter amount of credits to burn from pool:');
+        if (amount) {
+            writeContract({
+                address: roomAddress,
+                abi: VotingRoomABI,
+                functionName: 'burnPoolCredits',
+                args: [BigInt(amount)],
+            });
+        }
+    };
+
     // Voter Functions
     const handleVote = (e) => {
         e.preventDefault();
@@ -250,7 +327,7 @@ export default function VotingRoomPage() {
 
                     <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
                         <span className={`state-badge state-${STATE_LABELS[state]}`}>
-                            {STATE_LABELS[state]}
+                            {STATE_LABELS[state] || 'Unknown'}
                         </span>
                         <span style={{ padding: '4px 12px', background: '#f0f0f0', borderRadius: '12px', fontSize: '14px' }}>
                             Round: {currentRound?.toString() || '0'}
@@ -262,9 +339,38 @@ export default function VotingRoomPage() {
                         )}
                     </div>
 
-                    {voterCredit && (
+                    {/* Credit Pool Information */}
+                    <div style={{ marginTop: '20px', padding: '15px', background: '#f9f9f9', borderRadius: '8px' }}>
+                        <h4 style={{ marginBottom: '10px' }}>Credit Pool Status</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '14px' }}>
+                            <div>
+                                <strong>Total in System:</strong><br />
+                                {totalCreditsInSystem?.toString() || '0'}
+                            </div>
+                            <div>
+                                <strong>Available Pool:</strong><br />
+                                {availableCreditsPool?.toString() || '0'}
+                            </div>
+                            <div>
+                                <strong>Currently Granted:</strong><br />
+                                {totalCreditsGranted?.toString() || '0'}
+                            </div>
+                            <div>
+                                <strong>Total Used:</strong><br />
+                                {totalCreditsUsed?.toString() || '0'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* User Status */}
+                    {address && (
                         <div style={{ marginTop: '15px', padding: '10px', background: '#f9f9f9', borderRadius: '8px' }}>
-                            <strong>Your Credits:</strong> {voterCredit.toString()}
+                            <div style={{ marginBottom: '5px' }}>
+                                <strong>Your Status:</strong> {isVoterEligible ? '✓ Eligible Voter' : '✗ Not Eligible'}
+                            </div>
+                            <div>
+                                <strong>Your Credits:</strong> {voterCredit?.toString() || '0'}
+                            </div>
                         </div>
                     )}
 
@@ -297,13 +403,23 @@ export default function VotingRoomPage() {
                             <p style={{ color: '#666', fontSize: '14px' }}>No voters yet</p>
                         ) : (
                             voters.map((voter, idx) => (
-                                <div key={idx} className="voter-item">
-                                    <div style={{ fontSize: '12px', wordBreak: 'break-all' }}>
-                                        {voter.voter_address}
+                                <div key={idx} className="voter-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontSize: '12px', wordBreak: 'break-all' }}>
+                                            {voter.voter_address}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                                            Credits: {voter.voter_credit} | Last Voted: Round {voter.last_voted_round || 'N/A'}
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-                                        Credits: {voter.voter_credit} | Last Voted: Round {voter.last_voted_round || 'N/A'}
-                                    </div>
+                                    {isRoomAdmin && state !== 1 && (
+                                        <button
+                                            onClick={() => handleRemoveVoter(voter.voter_address)}
+                                            style={{ padding: '5px 10px', fontSize: '12px', background: '#dc3545', marginLeft: '10px' }}
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -317,8 +433,18 @@ export default function VotingRoomPage() {
                             <p style={{ color: '#666', fontSize: '14px' }}>No candidates yet</p>
                         ) : (
                             candidates.map((candidate, idx) => (
-                                <div key={idx} className="candidate-item">
-                                    <strong>ID {candidate.candidate_id}:</strong> {candidate.candidate_name}
+                                <div key={idx} className="candidate-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <strong>ID {candidate.candidate_id}:</strong> {candidate.candidate_name}
+                                    </div>
+                                    {isRoomAdmin && state !== 1 && (
+                                        <button
+                                            onClick={() => handleRemoveCandidate(candidate.candidate_id)}
+                                            style={{ padding: '5px 10px', fontSize: '12px', background: '#dc3545' }}
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -361,6 +487,14 @@ export default function VotingRoomPage() {
                                         🔃 Reset Room
                                     </button>
                                 </>
+                            )}
+                            <button onClick={handleSetMaxCost} disabled={isPending || isConfirming} className="action-btn">
+                                ⚙️ Set Max Cost Per Vote
+                            </button>
+                            {availableCreditsPool > 0 && (
+                                <button onClick={handleBurnPoolCredits} disabled={isPending || isConfirming} className="action-btn" style={{ background: '#dc3545' }}>
+                                    🔥 Burn Pool Credits
+                                </button>
                             )}
                         </div>
 

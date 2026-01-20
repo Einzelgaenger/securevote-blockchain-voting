@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseEther } from 'viem';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseEther, decodeEventLog } from 'viem';
 import { CONTRACT_ADDRESSES } from '../config/contracts';
 import RoomFactoryABI from '../contracts/ABI/v2/RoomFactory.json';
 import SponsorVaultABI from '../contracts/ABI/v2/SponsorVault.json';
@@ -9,6 +9,7 @@ import SponsorVaultABI from '../contracts/ABI/v2/SponsorVault.json';
 export default function CreateRoomPage() {
     const { address, isConnected } = useAccount();
     const navigate = useNavigate();
+    const publicClient = usePublicClient();
     const [roomName, setRoomName] = useState('');
     const [depositAmount, setDepositAmount] = useState('');
     const [createdRoomAddress, setCreatedRoomAddress] = useState(null);
@@ -21,7 +22,38 @@ export default function CreateRoomPage() {
     });
 
     const { writeContract, data: hash, error, isPending } = useWriteContract();
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+    const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash });
+
+    // Parse room address from transaction receipt
+    useEffect(() => {
+        if (isSuccess && receipt && !createdRoomAddress) {
+            try {
+                const roomCreatedEvent = receipt.logs.find(log => {
+                    try {
+                        const decoded = decodeEventLog({
+                            abi: RoomFactoryABI,
+                            data: log.data,
+                            topics: log.topics
+                        });
+                        return decoded.eventName === 'RoomCreated';
+                    } catch {
+                        return false;
+                    }
+                });
+
+                if (roomCreatedEvent) {
+                    const decoded = decodeEventLog({
+                        abi: RoomFactoryABI,
+                        data: roomCreatedEvent.data,
+                        topics: roomCreatedEvent.topics
+                    });
+                    setCreatedRoomAddress(decoded.args.room);
+                }
+            } catch (err) {
+                console.error('Error parsing room address:', err);
+            }
+        }
+    }, [isSuccess, receipt, createdRoomAddress]);
 
     const handleCreateRoom = async (e) => {
         e.preventDefault();
@@ -42,17 +74,10 @@ export default function CreateRoomPage() {
             address: CONTRACT_ADDRESSES.RoomFactory,
             abi: RoomFactoryABI,
             functionName: 'createRoom',
-            args: [roomName, depositWei],
+            args: [roomName],
             value: depositWei,
         });
     };
-
-    // Listen for success and extract room address from events
-    if (isSuccess && !createdRoomAddress) {
-        // You would parse the event logs here to get the room address
-        // For now, we'll show a success message
-        setCreatedRoomAddress('0x...'); // TODO: Parse from event
-    }
 
     const isFactoryOwner = address?.toLowerCase() === CONTRACT_ADDRESSES.FactoryOwner?.toLowerCase();
 
