@@ -366,7 +366,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Process all voters (duplicates allowed - last value wins)
+        // Process all voters (if duplicates exist, last value wins)
         for (uint256 i = 0; i < voters.length; i++) {
             if (!_isVoterEligible(voters[i])) revert VoterNotEligible();
             
@@ -435,7 +435,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Process all voters (duplicates allowed - last value wins)
+        // Process all voters (if duplicates exist, last value wins)
         for (uint256 i = 0; i < voters.length; i++) {
             if (voters[i] == address(0)) revert ZeroAddress();
             
