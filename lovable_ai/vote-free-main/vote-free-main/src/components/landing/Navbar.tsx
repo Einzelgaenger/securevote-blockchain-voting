@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { GradientButton } from "@/components/ui/GradientButton";
 import { Vote, Menu, X } from "lucide-react";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 const navLinks = [
   { label: "Features", href: "#features" },
@@ -27,11 +27,10 @@ export function Navbar() {
     <motion.header
       initial={{ y: -100 }}
       animate={{ y: 0 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled
           ? "bg-background/80 backdrop-blur-xl border-b border-border/50 shadow-sm"
           : "bg-transparent"
-      }`}
+        }`}
     >
       <nav className="container px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
@@ -58,10 +57,7 @@ export function Navbar() {
 
           {/* CTA Button */}
           <div className="hidden md:block">
-            <GradientButton onClick={() => navigate('/dashboard')}>
-              <Vote className="w-4 h-4" />
-              Connect Wallet
-            </GradientButton>
+            <ConnectButton />
           </div>
 
           {/* Mobile Menu Button */}
@@ -98,10 +94,9 @@ export function Navbar() {
                   {link.label}
                 </a>
               ))}
-              <GradientButton className="w-full mt-4" onClick={() => navigate('/dashboard')}>
-                <Vote className="w-4 h-4" />
-                Connect Wallet
-              </GradientButton>
+              <div className="mt-4">
+                <ConnectButton />
+              </div>
             </div>
           </motion.div>
         )}

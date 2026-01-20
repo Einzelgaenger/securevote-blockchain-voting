@@ -2,9 +2,27 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Shield, Zap, Vote, ChevronRight } from "lucide-react";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
+import { useIsFactoryOwner } from '@/hooks/useIsFactoryOwner';
+import { useEffect } from 'react';
 
 export function HeroSection() {
   const navigate = useNavigate();
+  const { address, isConnected } = useAccount();
+  const isFactoryOwner = useIsFactoryOwner();
+
+  // Auto-redirect when wallet connected
+  useEffect(() => {
+    if (isConnected && address) {
+      if (isFactoryOwner) {
+        navigate('/creator');
+      } else {
+        navigate('/voter');
+      }
+    }
+  }, [isConnected, address, isFactoryOwner, navigate]);
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Animated background elements */}
@@ -15,7 +33,7 @@ export function HeroSection() {
       </div>
 
       {/* Grid pattern overlay */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -48,7 +66,7 @@ export function HeroSection() {
 
           {/* Subheadline */}
           <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10">
-            Create elections in minutes. Voters participate for free. 
+            Create elections in minutes. Voters participate for free.
             Every vote is immutably stored on the blockchain.
           </p>
 
@@ -59,10 +77,24 @@ export function HeroSection() {
             transition={{ delay: 0.4 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <GradientButton size="lg" className="w-full sm:w-auto" onClick={() => navigate('/dashboard')}>
-              <Vote className="w-5 h-5" />
-              Connect Wallet
-            </GradientButton>
+            <ConnectButton.Custom>
+              {({ account, chain, openConnectModal, mounted }) => {
+                const ready = mounted;
+                const connected = ready && account && chain;
+
+                return (
+                  <GradientButton
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    onClick={openConnectModal}
+                    disabled={!ready}
+                  >
+                    <Vote className="w-5 h-5" />
+                    {connected ? 'Connected' : 'Connect Wallet'}
+                  </GradientButton>
+                );
+              }}
+            </ConnectButton.Custom>
             <GradientButton variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
               Learn More
               <ChevronRight className="w-5 h-5" />

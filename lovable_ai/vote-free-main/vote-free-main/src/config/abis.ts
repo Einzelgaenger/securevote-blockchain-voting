@@ -1,11 +1,11 @@
-import MinimalForwarderABI from '../contracts/MinimalForwarder.abi';
-import SponsorVaultABI from '../contracts/SponsorVault.abi';
-import VotingRoomABI from '../contracts/VotingRoom.abi';
-import RoomFactoryABI from '../contracts/RoomFactory.abi';
+import MinimalForwarderABI from '../contracts/MinimalForwarder.json';
+import SponsorVaultABI from '../contracts/SponsorVault.json';
+import VotingRoomABI from '../contracts/VotingRoom.json';
+import RoomFactoryABI from '../contracts/RoomFactory.json';
 
 /**
  * Contract ABIs
- * Automatically imported from /ABI/v2 folder
+ * Imported from JSON files
  */
 export const ABIS = {
     MinimalForwarder: MinimalForwarderABI,

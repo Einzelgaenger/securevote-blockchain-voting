@@ -7,7 +7,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { CONTRACT_ADDRESSES } from '@/config/contracts';
 import { ABIS } from '@/config/abis';
-import { useRegistrationFee } from '@/hooks/useContracts';
+import { useFactorySettings } from '@/hooks/useFactorySettings';
 import {
     Loader2,
     CheckCircle,
@@ -25,8 +25,8 @@ export function CreateRoomPage() {
     const [depositAmount, setDepositAmount] = useState('0.1');
 
     // Get registration fee
-    const { data: regFee } = useRegistrationFee();
-    const regFeeETH = regFee ? Number(regFee) / 1e18 : 0.01;
+    const { registrationFeeWei } = useFactorySettings();
+    const regFeeETH = registrationFeeWei ? Number(registrationFeeWei) / 1e18 : 0.01;
 
     // Contract write
     const { writeContract, data: hash, error, isPending } = useWriteContract();
@@ -263,3 +263,5 @@ export function CreateRoomPage() {
         </div>
     );
 }
+
+export default CreateRoomPage;
