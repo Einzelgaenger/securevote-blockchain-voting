@@ -1,0 +1,5 @@
+
+
+Project URL: https://tphhdorbzxxylrdfpzrd.supabase.co
+publishable key: sb_publishable_AwMpP3VfGrwi4VYKd9eLxQ_5ZEclIPp
+Secret key: sb_secret_mvQaEDycERVkqU0UT0KYtw_VersNxoa
