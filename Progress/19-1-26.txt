@@ -1,0 +1,5 @@
+ada perbaruan code di VotingRoom.sol jadi ada fungsi prepareNextRound()
+jadi butuh redeploy lagi di remix (buat testing)
+
+Tanya:
+berarti next stepnya gimana agar bisa sesuai dengan menggunakan relayer dan lain-lain sesuai rencana awal

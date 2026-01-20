@@ -1,0 +1,84 @@
+
+ROOM contract
+
+Cycle:
+Start -> Stop -> End
+
+---
+Variable:
+
+#Room
+1. bool public roomState
+2. bool public sessionState
+3. uint public voteCreditTotal -> increment each time admin mintCredit
+4. uint public voteCreditLeft -> increment each time admin mintCredit, decrement each time admin grantCredit sejumlah _ammount
+5. uint public voteCreditUsed -> increment after voter cast a vote
+6. uint public voterTotal -> increment each time admin addVoter(address _voterAddress)
+7. uint public roomRound -> increment each time admin startVote()
+8. uint public voterEligibilityTotal -> increment after admin grantCredit to voter that isn't eligible yet
+9. uint public candidateTotal
+10. uint public candidateCount -> for helping ind id creation in adding and removing candidate, it keeps increasing
+11. uint public voterCount -> for helping in id creation in adding and removing voter, it keeps increasing
+
+#Voter (VoterStruct)
+1. uint voterID
+2. address voterAddress
+3. bool voterEligibility
+4. uint voterCredit
+mapping (address => VoterStruct) public voters
+mapping (uint => address) public voterAddresses
+
+#History (RoomHistoryStruct)
+1. uint historyId
+2. mapping of all candidates and their informations (attributes)
+mapping (uint => RoomHistroyStruct) public roomHistories
+
+#Candidate (CandidateStruct)
+1. uint candidateID
+2. string candidateName
+3. uint candidateVote
+mapping (uint => CandidateStruct) public candidates
+
+
+#Admin
+1. adminAddress
+
+---
+Functions:
+
+# by roomAdmin (onlyRoomAdmin)
+## ROOM
+- depositRoom(uint _ammountWei)
+- mintCredit(uint _ammount) -> adding vote credit to room
+
+## VOTE
+- startVote() -> only when: roomState = false && sessionState = false && semua voter is eligible or voterEligibilityTotal == voterTotal, deposit mencukupi dengan | what happen: increment roomRound++, roomState = true, sessionState = true
+- stopVote() -> only when: sessionState = true && roomState = true | what happen: sessionState = false
+- endVote() -> only when: sessionState = false && roomState = true | what happen: roomState = false, emit, write to roomHistories[roomRound], bikin semua voter jadi illegible dan jadikan semua voter's voterCredit = 0, voteCreditTotal = 0, voteCreditUsed = 0, voteCreditLeft = 0
+
+## VOTER
+- grantCredit(address _voterAddress, uint _amount) -> giving voter credit, making them eligible, can only grantCredit as much as voteCreditLeft >= _amount dan _voterAddress = voter, increment the voter's voterCredit, if _voterAddress isn't eligible yet, make them eligible then ++voterEligibilityTotal
+- addVoter(address _voterAddress) -> only when: roomState & sessionState = false  | what happen: tambahkan di mapping voters dan voterAddresses dengan id = voterCount, voterCount++, voterTotal++
+- removeVoter(address _voterAddress) -> only when: roomState & sessionState = false | what happen: hilangkan value dari mapping dengan _voteraddress di voters dan dengan id voter tersebut dari voterAddresses, voterTotal--
+- removeAllVoter() -> help create the function please
+
+## Candidate
+- addCandidate(string memory name) -> only when: roomState & sessionState = false | what happen: create candidate baru ke mapping candidate dengan id candidateCount, candidateCount++, candidateTotal++
+- removeCandidate(uint _candidateId) -> only when: roomState & sessionState = false | what happen: remove candidate dengan _candidateId dari mapping, hilangkan semua attributnya, candidateTotal--
+- removeAllCandidate() -> help create the function please
+
+# by voter (onlyEligibleVoter)
+castVote(uint _candidateId) -> only when: roomState = true && sessionState = true | what happen: uint _voterCredit = voters[msg.sender].voterCredit, voters[msg.sender].voterCredit = 0, voters[msg.sender].voterEligibility = false, candidates[_candidateId].candidateVote += _voterCredit
+
+# by all
+- readRoomHistory(uint _historyId) -> returns roomHistories[_historyId].<everything>
+- readVoterEligibility(address _voterAddress) -> returns voters[_voterAddress].eligibility
+- readRoomCandidates() -> return semua canidates dari mapping candidates dan semua attributesnya
+
+pastikan untuk hanya bisa cast vote ke candidate yang tersedia, begitu juga dengan add/remove voter/candidate
+pastikan semua function menerapkan CEI (Check-Effect-Interact)
+buatkan juga emit event lainnya yang dibutuhkan untuk mempermudah UI/UX juga
+Jika ingin pakai relayer wallet sebagai tempat deposit, apakah msg.sender menjadi EOA yang melakukan transaksi atau EOA yang membayar gas fee?
+kalau estimatedCost > maxCostPerVoteWei → jangan kirim tx (return error “gas too high”)
+
+kalau roomBalance < 2 * maxCostPerVoteWei → jangan kirim tx (return error “topup needed”)

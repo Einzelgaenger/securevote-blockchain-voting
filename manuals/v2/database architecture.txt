@@ -1,0 +1,15 @@
+┌──────────────┐
+│   Browser    │ ← User (Indonesia, USA, anywhere)
+│ (RainbowKit) │
+└──────┬───────┘
+       │
+       ├─────────→ Blockchain (Sepolia) ← Source of truth
+       │           - VotingRoom (batch functions)
+       │           - SponsorVault
+       │           - RoomFactory
+       │
+       └─────────→ Supabase (Singapore) ← Fast queries
+                   - Rooms table
+                   - Voters table
+                   - Candidates table
+                   - Real-time sync

@@ -1,0 +1,60 @@
+apakah kita bisa search our room? misal untuk ui ada panel my room, ada yang mana kita sebagai admin, ada juga sebagai voter?
+
+pingin bisa begitu di web3 nya
+
+haru ada fungsi buat liat balance total dari semua room yang ada di sponsorvault juga
+mungkin juga buatkan fungsi dari semua balance yang ada di SponsorVault
+
+apakah pada array atau mapping bisa ada > 1 key yang sama tapi value beda?
+
+ini masalahnya dimana? dan apakah code saat ini tidak memungkinkan room admin untuk withdraw?
+**⚠️ Limitasi Saat Ini:**  
+Fungsi `withdraw()` harus dipanggil dari room contract, tapi VotingRoom belum implement wrapper function. Perlu ditambahkan:
+
+```solidity
+// TODO: Add to VotingRoom
+function withdrawDeposit(uint256 amount) external onlyAdmin {
+    ISponsorVault(sponsorVault).withdraw(address(this), amount);
+}
+```
+
+apakah relayer langsung withdraw room balance eaxctly after a vote? bukan setelah beberapa vote atau setelah voting room state close?
+
+pastikan semua issue yang ada di SponsorVault_Manual.md diatasi pada implementasi
+
+pingin ada fungsi untuk track room total, bisa cek room yang mana user sebagai admin, dan sebagai voter
+
+last read:
+### 2. `getRoomCount` 🔵 (View)
+
+pastikan ada control panel untuk creator dan room admin 
+
+UI UX:
+
+auto reload (calling value) or manually reload the page? for better ui ux
+
+pakai rainbow kit biar user bisa pakai berbagai macam wallet, tidak hanya metamask
+
+untuk add voter bisa pakai file atau excel yang diupload kemudian di baca
+kemudian otomasikan grant user, mungkin dengan tabel atau panel baru / page baru, nanti bisa select all, search by address, dan kemudian bisa masukin nominal grant
+
+add candidate juga bisa dalam bentuk file mungkin excel
+
+harusnya nanti kita bikin logic di web backendnya ketika kita masukin file excel (pastikan aman dari serangan cyber / hacker) dan kemudian dengan pre defined template yang sesuai, sistem bisa langsung masukin candidates, voters, voter's credit dalam sekali upload file (mengurangi redundansi dan manual labor)
+Namun tetap bisa melakukan secara manual
+
+Bisa membuat file excel juga dari result voting setelah close round, komplit dengan room name, room address, room time (kita diskusi lagi tentang ini nanti), candidates and their vote count, voter's addresses, and their participation (sudah vote atau belum)
+
+setelah close round apakah credit dan eligibilitas voter akan kembali 0 or fasle atau belum?
+apakah ketika prepare newround maka credit dan eligibilitas voter akan kembali 0 or fasle atau belum?
+apakah ketika reset maka semua voter, candidate, dan credit akan kembali false/0?
+
+What if kita pakai offchain database untuk simpan seperti: room name, voter's name, semua value yang ada kemudian update berkala? siapapun yang melakukan transaksi terlebih dahulu pasti akan update sistem, misal ada tx yang dilakukan, maka langsung ada update terkait hal tersebut
+
+misal add voter, maka voter bertambah jika sukses kemudian table voter akan diupdate di database
+namun jadi user bisa auto update tanpa harus call manual di devicenya, selama ada tx yang terjadi, maka sistem akan selalu up to date, namun tentunya kita masih sediakan tombol refresh manual untuk call
+
+Ini mungkin juga bisa diimplementasikan dalam page rooms, tentunya room akan selalu ada di blockchain, jadi bakal lebih cepat untuk load data, tentunya masih ada tombol refresh untuk update panggil call.
+untuk room detail tentunya kita perlu fungsi call, jadi bakal loading lebih lama, tapi ini bisa spesifik saja tidak semua room langsung dicek statusnya kecuali klik tombol refresh pada room page
+
+Aku pingin bisa simpan dan update data ke database external, tapi yang gratis pakai apa dan bagaimana dan tentunya pasti akan ada update dari solidity (mungkin), bagaimana ya?

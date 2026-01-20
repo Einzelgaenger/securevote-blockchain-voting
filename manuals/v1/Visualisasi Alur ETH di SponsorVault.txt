@@ -1,0 +1,25 @@
+┌─────────────────────────────────────────────────────┐
+│          SMART CONTRACT: SponsorVault               │
+│                                                     │
+│  Balance Total: 15 ETH                              │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ platformFeeAccrued: 2 ETH                     │  │
+│  │  ├─ Registration Fee: 1.5 ETH (15 rooms)      │  │
+│  │  └─ Withdraw Fee: 0.5 ETH (dari admin tarik)  │  │
+│  └───────────────────────────────────────────────┘  │
+│                                                     │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ roomBalance[Room A]: 5 ETH                    │  │
+│  │ roomBalance[Room B]: 3 ETH                    │  │
+│  │ roomBalance[Room C]: 5 ETH                    │  │
+│  │ TOTAL ROOM DEPOSITS: 13 ETH                   │  │
+│  └───────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+         │
+         │ Owner call: withdrawPlatformFee(0xOwnerEOA)
+         │
+         ▼
+┌─────────────────────┐
+│   Owner EOA Wallet  │
+│   +2 ETH            │
+└─────────────────────┘

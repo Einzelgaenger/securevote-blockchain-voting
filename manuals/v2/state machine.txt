@@ -1,0 +1,18 @@
+Inactive ─┬─ startVoting() ──→ Active
+          │
+          └─ Can: Add/remove voters, candidates
+             Cannot: Vote
+
+Active ───┬─ endVoting() ────→ Ended
+          │
+          └─ Can: Vote
+             Cannot: Modify setup
+
+Ended ────┬─ closeRound() ───→ Closed
+          │
+          └─ Can: Count votes
+             Cannot: Vote
+
+Closed ───┬─ prepareNextRound() → Inactive (same voters)
+          ├─ resetRoom() ────────→ Inactive (new voters)
+          └─ withdrawDeposit() ──→ Get refund

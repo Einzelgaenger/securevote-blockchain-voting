@@ -1,0 +1,254 @@
+Berikut masukan update yang perlu kamu lakukan supaya desain “ROOM contract” di `notes.txt` nyambung ke rencana final (ERC-2771 + SponsorVault + weighted credit + settleAndWithdraw + precheck relayer). 
+
+---
+
+# 1) Pisahkan “Deposit” dari Room → pindah ke SponsorVault
+
+Di notes kamu masih ada `depositRoom(uint _amountWei)` di Room. Itu sebaiknya **tidak menyimpan ETH di Room**.
+
+**Update:**
+
+* Buat kontrak baru `SponsorVault` yang menyimpan:
+
+  * `roomBalance[room]`
+  * `isRelayer[addr]`
+  * `overheadBps`, `registrationFeeWei`
+  * `settled[actionId]` (anti double settle)
+* `topup()` dilakukan ke vault (bukan ke room):
+
+  * `SponsorVault.topup(room)` payable, onlyRoomAdmin
+
+**Room** hanya butuh:
+
+* `maxCostPerVoteWei` (set admin, dipakai relayer precheck + require di vote)
+
+---
+
+# 2) State machine: ganti `roomState/sessionState` → enum state
+
+Di notes ada `bool roomState` dan `bool sessionState` + cycle “Start → Stop → End”. Lebih rapi pakai:
+
+```solidity
+enum State { Inactive, Active, Ended, Closed }
+State public state;
+```
+
+**Update rules:**
+
+* Inactive: add/remove voter/candidate, grant credit, set maxCost, topup
+* Active: hanya vote (gasless via relayer), topup boleh
+* Ended: pause/stop (tidak bisa vote), boleh resume (opsional)
+* Closed: finalize settlement/withdraw/refund done, balik ke Inactive (atau tetap Closed)
+
+Kalau kamu tetap mau 3 tahap “Start/Stop/End”, mapping-nya:
+
+* StartVote → state = Active
+* StopVote → state = Ended (pause)
+* EndVote/CloseRound → state = Closed/Inactive
+
+---
+
+# 3) ERC-2771: semua akses voter wajib pakai `_msgSender()`
+
+Di notes, `castVote` pakai `msg.sender`. Karena vote wajib via relayer, itu akan salah.
+
+**Update:**
+
+* `VotingRoom` inherit `ERC2771Context`
+* di vote:
+
+  * `address voter = _msgSender();`
+* `onlyEligibleVoter` harus cek eligibility berdasarkan `voter`, bukan `msg.sender`.
+
+---
+
+# 4) Weighted voting: pakai semua credit sekaligus + one vote per round
+
+Di notes kamu masih menyebut `voterEligibility` bool dan `voterCredit` bisa berkurang. Tapi requirement baru:
+
+* credit = weight
+* satu voter hanya boleh pilih 1 kandidat per round
+* saat vote: **habiskan semua credit voter** (jadi 0)
+* credit tidak boleh dibawa ke round berikutnya (kalau round baru)
+
+**Update data model voter:**
+
+* Hapus konsep `voterEligibility` sebagai bool yang berubah-ubah karena vote.
+* Eligibility lebih baik = “ada di allowlist”
+* “boleh vote” = (allowlisted) AND (credit > 0) AND (belum vote round ini)
+
+**Anti double vote per round:**
+
+* Tambah:
+
+  * `mapping(address => uint256) lastVotedRound;`
+* rule:
+
+  * require `lastVotedRound[voter] != roomRound`
+  * set `lastVotedRound[voter] = roomRound`
+
+**Vote logic:**
+
+* `uint weight = voters[voter].voterCredit; require(weight > 0);`
+* `voters[voter].voterCredit = 0;`
+* `voteCreditUsed += weight;` (sesuai poin kamu: total tetap, used naik)
+
+---
+
+# 5) Round & history: jangan simpan mapping di dalam struct history
+
+Di notes: `RoomHistoryStruct` punya “mapping of all candidates…”. Mapping di struct untuk history itu bikin readback & iteration sulit (dan biasanya nggak bisa “return everything” seperti yang kamu mau).
+
+**Update yang lebih cocok:**
+
+* Simpan summary per round:
+
+  * `winnerCandidateId`
+  * `totalWeightVotes`
+  * `startedAt/endedAt`
+* Untuk tally per round:
+
+  * `mapping(uint256 round => mapping(uint256 candidateId => uint256 votes)) roundVotes;`
+
+Jadi history “disimpan” di storage by round tanpa perlu copy candidate structs.
+
+---
+
+# 6) Candidate & voter removal: hindari “removeAll” yang loop besar
+
+Di notes kamu minta `removeAllVoter()` dan `removeAllCandidate()`. Ini rawan DoS karena loop besar.
+
+**Update: gunakan versioning untuk reset total**
+
+* `uint256 voterRegistryVersion;`
+* `mapping(address => uint256) voterVersion;` eligible jika sama
+* reset total: `voterRegistryVersion++` (tanpa loop)
+
+Candidate juga:
+
+* `uint256 candidateRegistryVersion;`
+* `mapping(uint256 => uint256) candidateVersion;`
+
+Dengan cara ini “removeAll” jadi O(1).
+
+---
+
+# 7) Integrasi SponsorVault: settleAndWithdraw(actionId, chargedAmount)
+
+Notes kamu belum punya settlement.
+
+**Update flow final:**
+
+1. Vote tx (via forwarder) sukses → Room emit `VoteCast` + `actionId`
+2. Relayer ambil receipt off-chain dan hitung:
+
+   * `actualVoteCost = gasUsed * effectiveGasPrice`
+   * `charged = actualVoteCost + actualVoteCost * overheadBps / 10_000`
+3. Relayer panggil:
+
+   * `SponsorVault.settleAndWithdraw(room, actionId, charged)`
+
+**Di vault wajib:**
+
+* only allowlisted relayer
+* anti double settle: `settled[actionId]`
+* `roomBalance[room] -= charged`
+* transfer charged ke relayer
+
+**ActionId deterministik (disarankan):**
+
+* `actionId = keccak256(abi.encodePacked(address(this), roomRound, voter))`
+  Karena voter cuma boleh vote sekali per round, actionId unik.
+
+> Penting: vault harus bisa memastikan actionId memang berasal dari room itu (paling simpel: vault memanggil `room.isValidAction(actionId)` atau actionId-nya dibuat deterministic + vault recompute dari parameter yang diberikan).
+
+---
+
+# 8) `maxCostPerVoteWei`: fungsi & check yang perlu
+
+Di notes kamu sudah punya ide precheck relayer. Sesuai plan final:
+
+**maxCostPerVoteWei (per room, set oleh admin) dipakai untuk:**
+
+* Relayer precheck: kalau `estimatedCost > maxCostPerVoteWei` → jangan kirim tx
+* Balance precheck: kalau `roomBalance < 2 * maxCostPerVoteWei` → jangan kirim tx
+* On-chain safety check (opsional tapi bagus):
+
+  * di `vote()` bisa `require(vault.roomBalance(address(this)) >= 2 * maxCostPerVoteWei)`
+  * (ini mencegah relayer “nakal” kirim tx walau balance kurang)
+
+---
+
+# 9) Credit counters: ubah definisi variabel agar sesuai model baru
+
+Di notes:
+
+* `voteCreditTotal`, `voteCreditLeft`, `voteCreditUsed`, `voterEligibilityTotal`
+
+Dengan model weighted-all-at-once:
+
+* `voteCreditTotal` = total minted/granted ever (audit)
+* `voteCreditUsed` = total weight yang sudah dipakai vote
+* `voteCreditLeft` = boleh dihitung:
+
+  * `voteCreditTotal - voteCreditUsed - totalCreditsBurnedOnReset`
+    atau kamu simpan langsung dan update saat grant/vote/reset
+
+Karena kamu ingin “totalCredit tetap sama saat vote, used bertambah”, definisi yang konsisten:
+
+* `totalCreditsGranted` naik saat grant
+* `usedCredits` naik saat vote
+* credit voter turun ke 0 saat vote
+
+Dan **hapus** `voterEligibilityTotal` (eligibility bukan lagi “punya credit”, tapi “allowlisted”). Credit adalah requirement terpisah.
+
+---
+
+# 10) Event list minimal agar UI mudah
+
+Tambahkan event-event berikut (yang belum ada di notes):
+
+**Room:**
+
+* `RoomRegistered(room, admin, feePaid)`
+* `RoundStarted(room, round)`
+* `RoundStopped(room, round)`
+* `RoundEnded(room, round)` / `RoundClosed(...)`
+
+**Registry:**
+
+* `VoterAdded(room, voter)`
+* `VoterRemoved(room, voter)`
+* `CandidateAdded(room, candidateId, name)`
+* `CandidateRemoved(room, candidateId)`
+
+**Credits:**
+
+* `CreditGranted(room, voter, amount, newBalance)`
+
+**Voting:**
+
+* `VoteCast(room, round, voter, candidateId, weight, actionId)`
+
+**Vault:**
+
+* `RoomToppedUp(room, admin, amount, newBalance)`
+* `Settled(room, actionId, relayer, chargedAmount, newBalance)`
+* `OverheadBpsUpdated(oldBps, newBps)`
+
+---
+
+## Ringkas “Checklist perubahan” dari notes kamu
+
+1. Ganti 2 bool state → `enum State`
+2. Cast vote pakai `_msgSender()` (ERC-2771)
+3. Weighted vote: gunakan semua credit, set credit voter = 0
+4. One vote per round: `lastVotedRound`
+5. Deposit dipindah ke `SponsorVault` + `settleAndWithdraw`
+6. `removeAll` pakai versioning (tanpa loop)
+7. History per round pakai summary + mapping `roundVotes`
+8. `maxCostPerVoteWei` per room + require buffer 2× (off-chain precheck + optional on-chain check)
+
+---
+
+Kalau kamu sudah siap, next step paling cepat: kamu upload/point ke file Solidity room yang sekarang (atau `VotingRoom.sol` yang sudah ada di project), lalu aku kasih **diff perubahan** konkret: variable apa yang ditambah/hapus, modifiers apa yang berubah, dan skeleton `SponsorVault.sol` yang sesuai plan ini.

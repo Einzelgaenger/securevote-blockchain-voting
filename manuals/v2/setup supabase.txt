@@ -1,0 +1,6 @@
+# Go to https://supabase.com
+# Click "New Project"
+# Choose region: Singapore (nearest to Indonesia)
+# Get credentials:
+# - API URL: https://xxxxx.supabase.co
+# - API Key: eyJhbGci...

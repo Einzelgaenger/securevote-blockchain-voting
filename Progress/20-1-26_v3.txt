@@ -1,0 +1,26 @@
+sepertinya kita butuh varible baru untuk menyimpan jumlah credit in circulation
+
+
+contoh:
+BEFORE batchRemoveVoters([alice, bob, charlie]):
+├─ voterCredit[alice] = 100
+├─ voterCredit[bob] = 150
+├─ voterCredit[charlie] = 100
+├─ totalCreditsGranted = 1000
+└─ totalCreditsUsed = 300
+
+AFTER batchRemoveVoters([alice, bob, charlie]):
+├─ voterCredit[alice] = 0
+├─ voterCredit[bob] = 0
+├─ voterCredit[charlie] = 0
+├─ totalCreditsGranted = 650  ← Refunded 350!
+└─ totalCreditsUsed = 300     ← Unchanged
+
+seharusnya ada satu variable total credit in system yaitu 1000 setelah remove voter
+lalu ada variable sisa untuk credit yang bisa diberikan ke voter lain sebanyak 350 credit
+
+jika kita berikan ke voter baru 300, maka variable sisa credit ada 50, namun total credit in system masih 1000, dan hanya jika kita grant user > sisa credit misal 100, maka total credit in system menjadi 1050 dan credit's granted jadi 1050 juga
+
+Again, ini akan kembali ke 0 jika di reset
+
+bagaima dengan logika ini?

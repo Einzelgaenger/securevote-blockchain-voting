@@ -1,0 +1,20 @@
+apakah jika pakai rainbow kit, maka supported wallet bisa akses asal dalam satu network yang sama (misal sepolia testnet)?
+
+berapa limit dari batch ini?
+apaka sudah ada fungsi remove all candidate dan remove all voters?
+jika di remove, harusnya credit dikembalikan ke sistem, jadi credit used berkurang namun total credit in room masih sama
+
+Dan juga apakah supabase yang gratis ini bisa diakses globally dan tidak hanya locally di pcku?
+
+untuk rainbow kit connect ini, mungkin dibikin biar sistem bisa auto switch network mengikuti dimana smart contract dideploy creator (bagaimana dapat informasi ini?)
+
+important note, untuk update solidity, pastikan di /contracts/v2 sampai ada informasi terbaru
+
+udah bikin supabase
+organization name: razaqshaquille
+project name: securevote
+terus apa yang dibutuhin?
+
+excel memang seharusnya upload dengan batch function
+supabase setup dengan apa yang terbaik?
+rainbowkit auto network switch
