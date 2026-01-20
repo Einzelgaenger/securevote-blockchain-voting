@@ -7,10 +7,10 @@ import { CONTRACT_ADDRESSES } from '@/config/contracts';
  */
 export function useIsFactoryOwner() {
     const { address } = useAccount();
-    
+
     if (!address || !CONTRACT_ADDRESSES.FactoryOwner) {
         return false;
     }
-    
+
     return address.toLowerCase() === CONTRACT_ADDRESSES.FactoryOwner.toLowerCase();
 }
