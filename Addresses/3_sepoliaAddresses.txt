@@ -1,0 +1,98 @@
+===========================================
+SecureVote v2 - Sepolia Testnet Deployment
+===========================================
+Network: Sepolia Testnet (Chain ID: 11155111)
+Deployed: January 20, 2026
+Deployer: 0x04A3baCFd9D57E2fA661064c03C1c1774A8cEb97
+
+===========================================
+Contract Addresses:
+===========================================
+
+MinimalForwarder:
+0xdE41F486df655AdA306166a601166DDA5e69e241
+
+SponsorVault:
+0x04d1BB5E8565DF62743212B39F3586d5A9965b67
+- Registration Fee: 0.01 ETH
+- Overhead: 10% (1000 bps)
+- Platform Fee: 5% (500 bps)
+
+VotingRoom (Implementation):
+0xc6e866069dc20c0ABAD2a74509Ac9aA928f2f0cF
+
+RoomFactory:
+0x35404f230901488BFE187d7edCF31287396E6842
+
+===========================================
+Etherscan Links:
+===========================================
+
+MinimalForwarder:
+https://sepolia.etherscan.io/address/0xdE41F486df655AdA306166a601166DDA5e69e241
+
+SponsorVault:
+https://sepolia.etherscan.io/address/0x04d1BB5E8565DF62743212B39F3586d5A9965b67
+
+VotingRoom:
+https://sepolia.etherscan.io/address/0xc6e866069dc20c0ABAD2a74509Ac9aA928f2f0cF
+
+RoomFactory:
+https://sepolia.etherscan.io/address/0x35404f230901488BFE187d7edCF31287396E6842
+
+===========================================
+Configuration Used:
+===========================================
+
+SponsorVault Constructor:
+- overheadBps: 1000 (10%)
+- registrationFeeWei: 10000000000000000 (0.01 ETH)
+- platformFeeBps: 500 (5%)
+
+VotingRoom Constructor:
+- trustedForwarder: 0xdE41F486df655AdA306166a601166DDA5e69e241
+
+RoomFactory Constructor:
+- votingRoomImplementation: 0xc6e866069dc20c0ABAD2a74509Ac9aA928f2f0cF
+- sponsorVault: 0x04d1BB5E8565DF62743212B39F3586d5A9965b67
+- trustedForwarder: 0xdE41F486df655AdA306166a601166DDA5e69e241
+
+Compiler Settings:
+- Version: 0.8.30+commit.73712a01
+- Optimization: Enabled
+- Runs: 1 (for VotingRoom to reduce contract size)
+- EVM: Default (prague)
+
+===========================================
+Deployment Status:
+===========================================
+
+✅ MinimalForwarder deployed
+✅ SponsorVault deployed
+✅ VotingRoom deployed (with size optimization)
+✅ RoomFactory deployed
+✅ All addresses verified
+✅ Ready for frontend integration
+
+===========================================
+Next Steps:
+===========================================
+
+1. ✅ Contracts deployed to Sepolia
+2. ⏳ Update frontend .env with addresses
+3. ⏳ Setup Supabase database
+4. ⏳ Get WalletConnect Project ID
+5. ⏳ Test create room from frontend
+6. ⏳ Add relayer to SponsorVault allowlist
+7. ⏳ Build relayer backend service
+
+===========================================
+Notes:
+===========================================
+
+- VotingRoom was compiled with runs=1 to meet 24KB size limit
+- This is testnet deployment - for production, redeploy to mainnet
+- Keep deployer private key secure
+- Backup these addresses in multiple locations
+
+===========================================
