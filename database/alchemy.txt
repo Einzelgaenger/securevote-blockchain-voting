@@ -3,6 +3,9 @@ Node RPC Setup
 Endpoint URL: https://eth-sepolia.g.alchemy.com/v2/bzeNYEyzUnid7G8Yu0C35
 API Key: bzeNYEyzUnid7G8Yu0C35
 
+RELAYER_PRIVATE_KEY = 02173ee78b31b2eeee023b25fe4ce62fa6ac67d513f7bab187e867d90c09e1f6
+RELAYER EOA= 0xf91546e7Eea793b0b3027f8EaA0011394683601A
+
 Request: 
 curl https://eth-sepolia.g.alchemy.com/v2/bzeNYEyzUnid7G8Yu0C35 \
      --request POST \
