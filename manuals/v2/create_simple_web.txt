@@ -1,0 +1,19 @@
+Aku pingin tolong buatkan UI simple dulu (simple html css) untuk bisa menampilkan button untuk memanggil function maupun varibales sebagai mana remix IDE bisa menampilkannya, sepertin pada gambar yang aku berikan
+
+Aku pingin diawal ada button untuk connect menggunakan rainbow kit, untuk wallet connect project id ada di database/walletconnect_reown_id.txt
+
+setelah berhasil akan ditampilkan 4 button yang merupakan masing-masing file solidity yang ada di contracts/v2
+
+untuk ABI ada di ABI/v2
+
+ketika aku klik misal MinimalForwarder, maka langsung menampilkan button sebagai mana ditampilkan pada remix (ada pada gambar yang saya berikan)
+
+Untuk address dari masing-masing contracts ada di addresses/2_productionReady.txt dan 3_sepoliaAddresses.txt
+
+Aku ingin untuk bisa menerapkan gasless voting hanya untuk function vote() pada VotingRoom
+
+Informasi untuk relayer wallet gasless voting ini ada di database/alchemy.txt
+
+TOlong buatkan ini di direktori mockup/v2
+
+Apakah sudah jelas atau masih ada pertanyaan?

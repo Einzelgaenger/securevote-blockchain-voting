@@ -1,0 +1,14 @@
+jelasin kegunaan menyimpan relayer resmi di SPonsorVAult?
+
+dimanakah eth hasil platformfee disimpan, dimana eth buat bikin room disimpan (registration fee) dimana kah eth hasil reimburse disimpan (harusnya ini langsung ambil dari deposit room ke wallet EOA si relayer wallet ini)?
+
+Dan disini karena pakai alchemy, aku gunakan wallet 0xf91546e7Eea793b0b3027f8EaA0011394683601A dengan private key: 02173ee78b31b2eeee023b25fe4ce62fa6ac67d513f7bab187e867d90c09e1f6
+Apakah hasil dari reimburse vote langsung diberikan ke situ atau gimana?
+Karena kan bisa masukin beberapa relayer resmi. apakah bisa cek siapa wallet relayer yang bayar dan jadikan walet itu penerima dari vote gas fee reimbursement?
+
+---
+
+Gimana jika relayer yang bayar belum dimasukkan ke relayer resmi di SponsorVault?
+Apakah tidak mendapatkan reimbursement? Dan apakah eth balance room tidak berkurang?
+
+-- Buat agar backend cek semua relayer resmi, room admin bisa pilih yang mana (akan ditunjukkan juga jumlah eth yang dimiliki masing-masing relayer tersebut)
