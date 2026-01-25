@@ -154,13 +154,15 @@ app.get("/health", async (_req, res) => {
     });
 });
 
-console.log("[/relay] to=", fwdReq.to, "from=", fwdReq.from, "gas=", fwdReq.gas);
 app.post("/relay", async (req, res) => {
     try {
         const { req: fwdReq, signature } = req.body || {};
+        console.log("[/relay] to=", fwdReq.to, "from=", fwdReq.from, "gas=", fwdReq.gas);
+
         if (!fwdReq || !signature) {
             return res.status(400).json({ error: "Missing req or signature" });
         }
+
 
         const net = await provider.getNetwork();
         if (Number(net.chainId) !== ALLOWED_CHAIN_ID) {
