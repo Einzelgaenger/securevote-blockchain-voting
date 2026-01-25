@@ -12,3 +12,6 @@ Gimana jika relayer yang bayar belum dimasukkan ke relayer resmi di SponsorVault
 Apakah tidak mendapatkan reimbursement? Dan apakah eth balance room tidak berkurang?
 
 -- Buat agar backend cek semua relayer resmi, room admin bisa pilih yang mana (akan ditunjukkan juga jumlah eth yang dimiliki masing-masing relayer tersebut)
+
+--- Branch 6
+Buat log agar bisa lihat sistem reinbursement terjadi atau tidak ke relayer, perlihatkan gas fee yang dibayarkan sesungguhnya dan berapa overhead dan total yang perlu direimburse ke relayer dari gas less vote()
