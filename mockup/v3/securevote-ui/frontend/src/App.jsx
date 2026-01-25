@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
-import { encodeFunctionData, parseAbiItem } from "viem";
+import { encodeFunctionData } from "viem";
 import { CONTRACTS, CHAIN_ID, FORWARDER_EIP712, TYPES } from "./config/contracts.js";
 
 function isReadFn(item) {
@@ -29,7 +29,6 @@ function FnCard({ fn, onCall, onSend, specialVoteGasless }) {
 
     const hasInputs = (fn.inputs || []).length > 0;
     const read = fn.stateMutability === "view" || fn.stateMutability === "pure";
-
     const buttonClass = read ? "btn read" : "btn write";
 
     return (
@@ -56,12 +55,7 @@ function FnCard({ fn, onCall, onSend, specialVoteGasless }) {
                         ))}
 
                     {!read && (
-                        <InputField
-                            label="tx value (wei) (opsional)"
-                            value={valueWei}
-                            onChange={setValueWei}
-                            placeholder="0"
-                        />
+                        <InputField label="tx value (wei) (opsional)" value={valueWei} onChange={setValueWei} placeholder="0" />
                     )}
 
                     <div className="row">
@@ -90,7 +84,7 @@ export default function App() {
 
     const [selected, setSelected] = useState(null);
     const [resultLog, setResultLog] = useState([]);
-    const [customRoomAddr, setCustomRoomAddr] = useState(""); // untuk VotingRoom dinamis
+    const [customRoomAddr, setCustomRoomAddr] = useState(""); // VotingRoom clone hasil createRoom
     const [gaslessEnabled, setGaslessEnabled] = useState(true);
 
     const relayerUrl = import.meta.env.VITE_RELAYER_URL;
@@ -105,14 +99,30 @@ export default function App() {
 
     const abiItems = useMemo(() => {
         if (!contract) return [];
-        return contract.abi.filter((x) => x && (x.type === "function"));
+        return contract.abi.filter((x) => x && x.type === "function");
     }, [contract]);
 
     const readFns = abiItems.filter(isReadFn);
     const writeFns = abiItems.filter(isWriteFn);
 
     function pushLog(line) {
-        setResultLog((prev) => [line, ...prev].slice(0, 50));
+        setResultLog((prev) => [line, ...prev].slice(0, 80));
+    }
+
+    // =========================
+    // SAFETY: forbid gasless vote to implementation
+    // =========================
+    function assertUsingRoomClone() {
+        if (selected !== "VotingRoom") return;
+        const impl = (CONTRACTS?.VotingRoom?.address || "").toLowerCase();
+        const eff = (effectiveAddress || "").toLowerCase();
+        if (!eff) throw new Error("VotingRoom address missing");
+        if (impl && eff === impl) {
+            throw new Error(
+                "Kamu masih memakai VotingRoom IMPLEMENTATION. " +
+                "Paste address room hasil createRoom (EIP-1167 clone), contoh: 0xa536..."
+            );
+        }
     }
 
     async function handleCall(fn, args) {
@@ -121,7 +131,7 @@ export default function App() {
                 address: effectiveAddress,
                 abi: contract.abi,
                 functionName: fn.name,
-                args: args.map((a) => (a === "" ? undefined : coerceArg(a, fn)))
+                args: args.map((a) => (a === "" ? undefined : coerceArg(a, fn))),
             });
             pushLog(`[CALL] ${fn.name} => ${stringify(res)}`);
         } catch (e) {
@@ -138,7 +148,7 @@ export default function App() {
                 functionName: fn.name,
                 args: args.map((a) => (a === "" ? undefined : coerceArg(a, fn))),
                 value: BigInt(valueWei || "0"),
-                chain
+                chain,
             });
             pushLog(`[TX] ${fn.name} => ${hash}`);
         } catch (e) {
@@ -153,7 +163,10 @@ export default function App() {
                     Gasless Vote
                 </button>
                 <div className="hint">
-                    Gasless hanya untuk <b>vote()</b> (meta-tx via MinimalForwarder)
+                    Gasless hanya untuk <b>vote()</b> (meta-tx via MinimalForwarder).
+                    <br />
+                    <b>Wajib</b> paste <b>room clone hasil createRoom</b> (contoh: <span className="mono">0xa536...</span>),{" "}
+                    <b>bukan</b> implementation (<span className="mono">{shortAddr(CONTRACTS?.VotingRoom?.address)}</span>).
                 </div>
             </>
         );
@@ -161,68 +174,114 @@ export default function App() {
 
     async function handleVoteGasless(args) {
         try {
+            if (!relayerUrl) throw new Error("VITE_RELAYER_URL belum diset di .env frontend");
             if (!walletClient) throw new Error("WalletClient not ready");
             if (!address) throw new Error("Not connected");
             if (!effectiveAddress) throw new Error("VotingRoom address missing");
             if (chain?.id !== CHAIN_ID) throw new Error("Please switch to Sepolia");
 
-            const candidateId = BigInt(args[0] || "0");
+            // ✅ enforce clone address (anti-bug utama)
+            assertUsingRoomClone();
+
+            const candidateId = BigInt(args?.[0] || "0");
 
             // 1) nonce dari forwarder
             const forwarder = CONTRACTS.MinimalForwarder;
+            pushLog("[GASLESS] step 1: read nonce");
             const nonce = await publicClient.readContract({
                 address: forwarder.address,
                 abi: forwarder.abi,
                 functionName: "getNonce",
-                args: [address]
+                args: [address],
             });
 
             // 2) calldata vote(candidateId)
+            pushLog("[GASLESS] step 2: encode vote data");
             const data = encodeFunctionData({
-                abi: CONTRACTS.VotingRoom.abi,
+                abi: CONTRACTS.VotingRoom.abi, // ABI boleh dari implementation
                 functionName: "vote",
-                args: [candidateId]
+                args: [candidateId],
             });
 
-            // 3) gas estimate untuk inner call
-            const estimated = await publicClient.estimateGas({
-                to: effectiveAddress,
-                data
-            });
+            // 3) estimate gas untuk inner call
+            // ⚠️ penting: account = forwarder.address supaya simulasi lebih mirip eksekusi asli
+            // pushLog("[GASLESS] step 3: estimateGas");
+            // const estimated = await publicClient.estimateGas({
+            //     account: forwarder.address,
+            //     to: effectiveAddress,
+            //     data,
+            // });
 
+            // buffer lebih besar agar tidak OOG (sementara untuk debugging)
+            // const innerGas = estimated + 120_000n;
+            pushLog("[GASLESS] step 3: skipped estimateGas; using fixed innerGas=500000");
+
+            const innerGas = 500000n; // sementara fixed
+
+
+            // const req = {
+            //     from: address,
+            //     to: effectiveAddress,
+            //     value: 0n,
+            //     gas: innerGas.toString(),
+            //     nonce: nonce.toString(),
+            //     data,
+            // };
             const req = {
                 from: address,
                 to: effectiveAddress,
                 value: 0n,
-                gas: (estimated + 50_000n).toString(),
-                nonce: nonce.toString(),
-                data
+                gas: innerGas,
+                nonce,
+                data,
             };
 
             const domain = {
                 name: FORWARDER_EIP712.domainName,
                 version: FORWARDER_EIP712.domainVersion,
                 chainId: CHAIN_ID,
-                verifyingContract: forwarder.address
+                verifyingContract: forwarder.address,
             };
 
             // 4) sign typed data
+            pushLog("[GASLESS] step 4: signTypedData");
             const signature = await walletClient.signTypedData({
                 domain,
                 types: TYPES,
                 primaryType: "ForwardRequest",
-                message: req
+                message: req,
             });
 
             // 5) kirim ke relayer
+            pushLog("[GASLESS] step 5: fetch relayer");
+            // const r = await fetch(`${relayerUrl}/relay`, {
+            //     method: "POST",
+            //     headers: { "content-type": "application/json" },
+            //     body: JSON.stringify({ req, signature }),
+            // });
+            const reqJson = {
+                ...req,
+                value: req.value.toString(),
+                gas: req.gas.toString(),
+                nonce: req.nonce.toString(),
+            };
+
             const r = await fetch(`${relayerUrl}/relay`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ req, signature })
+                body: JSON.stringify({ req: reqJson, signature }),
             });
 
             const j = await r.json();
-            if (!r.ok) throw new Error(j?.error || "Relayer error");
+
+            if (!r.ok) {
+                const msg =
+                    typeof j?.error === "string"
+                        ? j.error
+                        : JSON.stringify(j?.error, null, 2); // <-- ini kunci!
+                throw new Error(msg || "Relayer error");
+            }
+
 
             pushLog(`[GASLESS] vote(${candidateId}) => ${j.txHash}`);
         } catch (e) {
@@ -261,14 +320,19 @@ export default function App() {
 
                 {selected === "VotingRoom" && (
                     <div className="card mini">
-                        <div className="cardTitle">VotingRoom Address (opsional)</div>
+                        <div className="cardTitle">VotingRoom Address (WAJIB untuk room clone)</div>
                         <div className="cardBody">
                             <input
                                 className="input"
                                 value={customRoomAddr}
                                 onChange={(e) => setCustomRoomAddr(e.target.value)}
-                                placeholder="Kalau room hasil createRoom, paste address-nya di sini"
+                                placeholder="Paste address room hasil createRoom() (contoh: 0xa536...)"
                             />
+                            <div className="hint">
+                                <b>Catatan:</b> Jika field ini kosong, UI akan pakai address implementation (template) dan gasless vote akan
+                                ditolak.
+                            </div>
+
                             <div className="row">
                                 <label className="toggle">
                                     <input
@@ -287,15 +351,15 @@ export default function App() {
                     <div className="cardTitle">Connected</div>
                     <div className="cardBody">
                         <div className="mono">{shortAddr(address)}</div>
-                        <div className="mono">Chain: {chain?.name} ({chain?.id})</div>
+                        <div className="mono">
+                            Chain: {chain?.name} ({chain?.id})
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="panel">
-                <div className="panelTitle">
-                    {selected ? `${selected} @ ${shortAddr(effectiveAddress)}` : "Select a contract"}
-                </div>
+                <div className="panelTitle">{selected ? `${selected} @ ${shortAddr(effectiveAddress)}` : "Select a contract"}</div>
 
                 {contract && (
                     <>
@@ -317,9 +381,7 @@ export default function App() {
                                 onCall={(args) => handleCall(fn, args)}
                                 onSend={(args, valueWei) => handleSend(fn, args, valueWei)}
                                 specialVoteGasless={
-                                    selected === "VotingRoom" && fn.name === "vote" && gaslessEnabled
-                                        ? (args) => VoteGaslessButton(args)
-                                        : null
+                                    selected === "VotingRoom" && fn.name === "vote" && gaslessEnabled ? (args) => VoteGaslessButton(args) : null
                                 }
                             />
                         ))}
@@ -334,7 +396,9 @@ export default function App() {
                         <div className="hint">Output call/tx akan muncul di sini.</div>
                     ) : (
                         resultLog.map((l, i) => (
-                            <div key={i} className="consoleLine">{l}</div>
+                            <div key={i} className="consoleLine">
+                                {l}
+                            </div>
                         ))
                     )}
                 </div>
@@ -345,11 +409,19 @@ export default function App() {
 
 // Minimal coercion: uint/int -> BigInt, address/bytes/string keep string
 function coerceArg(val, fn) {
-    const inputs = fn.inputs || [];
-    // caller already supplies by index; we only parse by type here is not possible without index.
-    // We'll keep it simple: detect number-like.
-    if (/^\d+$/.test(val)) return BigInt(val);
-    return val;
+    const v = String(val).trim();
+
+    // bool
+    if (v === "true") return true;
+    if (v === "false") return false;
+
+    // address (auto-add 0x kalau user lupa)
+    if (/^[0-9a-fA-F]{40}$/.test(v)) return `0x${v}`;
+
+    // uint/int
+    if (/^\d+$/.test(v)) return BigInt(v);
+
+    return v;
 }
 
 function stringify(x) {
