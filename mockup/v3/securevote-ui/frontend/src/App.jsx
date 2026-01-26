@@ -84,6 +84,11 @@ export default function App() {
     const [resultLog, setResultLog] = useState([]);
     const [customRoomAddr, setCustomRoomAddr] = useState("");
     const [gaslessEnabled, setGaslessEnabled] = useState(true);
+    const [calcGasPriceGwei, setCalcGasPriceGwei] = useState("");
+    const [calcOverheadBps, setCalcOverheadBps] = useState("");
+    const [calcInnerGas, setCalcInnerGas] = useState("500000");
+    const [calcOuterBuffer, setCalcOuterBuffer] = useState("250000");
+    const [calcResult, setCalcResult] = useState(null);
 
     const relayerUrl = import.meta.env.VITE_RELAYER_URL;
 
@@ -176,6 +181,49 @@ export default function App() {
             if (chain?.id !== CHAIN_ID) throw new Error("Please switch to Sepolia");
 
             assertUsingRoomClone();
+
+            if (!calcResult?.chargedAmount) {
+                throw new Error("Hitung dulu Gas Cost Calculator (Estimate) sebelum vote");
+            }
+
+            // Guard: maxCostPerVoteWei harus sudah diset dan >= hasil kalkulasi
+            const maxCostPerVoteWei = await publicClient.readContract({
+                address: effectiveAddress,
+                abi: contract.abi,
+                functionName: "maxCostPerVoteWei",
+            });
+            pushLog(
+                `[PRECHECK] maxCostPerVoteWei=${maxCostPerVoteWei} | suggested=${calcResult.chargedAmount}`
+            );
+            if (!maxCostPerVoteWei || BigInt(maxCostPerVoteWei) === 0n) {
+                throw new Error("maxCostPerVoteWei belum diset. Set dulu di contract.");
+            }
+            const requiredMin = BigInt(calcResult.chargedAmount);
+            if (BigInt(maxCostPerVoteWei) < requiredMin) {
+                throw new Error(
+                    `maxCostPerVoteWei terlalu kecil. On-chain=${maxCostPerVoteWei} < kalkulasi=${requiredMin}`
+                );
+            }
+
+            // Guard: roomBalance harus >= 2x suggested maxCostPerVoteWei
+            if (!CONTRACTS?.SponsorVault?.address) {
+                throw new Error("SponsorVault address belum diset");
+            }
+            const roomBalance = await publicClient.readContract({
+                address: CONTRACTS.SponsorVault.address,
+                abi: CONTRACTS.SponsorVault.abi,
+                functionName: "roomBalance",
+                args: [effectiveAddress],
+            });
+            const minRoomBalance = requiredMin * 2n;
+            pushLog(
+                `[PRECHECK] roomBalance=${roomBalance} | minRequired(2x)=${minRoomBalance}`
+            );
+            if (BigInt(roomBalance) < minRoomBalance) {
+                throw new Error(
+                    `Room balance tidak cukup. roomBalance=${roomBalance} < minimum=${minRoomBalance}`
+                );
+            }
 
             const candidateId = BigInt(args?.[0] || "0");
 
@@ -275,8 +323,90 @@ export default function App() {
             }
 
             pushLog(`[GASLESS] vote(${candidateId}) => ${j.txHash}`);
+            if (j?.gasPrice !== undefined) {
+                pushLog(`[GASLESS][COST] gasPrice=${j.gasPrice} wei`);
+            }
+            if (j?.actualGasCost !== undefined || j?.overheadWei !== undefined || j?.chargedAmount !== undefined) {
+                pushLog(
+                    `[GASLESS][COST] actualGasCost=${j.actualGasCost ?? "n/a"} wei (${formatWeiToEth(j.actualGasCost ?? "0")} ETH), ` +
+                    `overhead=${j.overheadWei ?? "n/a"} wei (${formatWeiToEth(j.overheadWei ?? "0")} ETH), ` +
+                    `charged=${j.chargedAmount ?? "n/a"} wei (${formatWeiToEth(j.chargedAmount ?? "0")} ETH)`
+                );
+            } else {
+                pushLog(`[GASLESS][COST] missing fields from relayer response`);
+            }
+            if (j?.roomBalanceBefore && j?.roomBalanceAfter) {
+                pushLog(
+                    `[GASLESS][VAULT] roomBalance ${j.roomBalanceBefore} -> ${j.roomBalanceAfter} wei (${formatWeiToEth(j.roomBalanceAfter)} ETH)`
+                );
+            }
+            if (j?.settleTxHash) {
+                pushLog(`[GASLESS][SETTLE] ${j.settleTxHash} status=${j.settleStatus}`);
+            }
         } catch (e) {
             pushLog(`[ERROR][GASLESS] vote: ${e.shortMessage || e.message}`);
+        }
+    }
+
+    async function handleEstimateGasCost() {
+        try {
+            if (!publicClient) throw new Error("Public client not ready");
+            const gasPrice = await publicClient.getGasPrice();
+            const gasPriceGwei = (gasPrice / 1_000_000_000n).toString();
+            setCalcGasPriceGwei(gasPriceGwei);
+
+            let overheadBps = 0n;
+            if (CONTRACTS?.SponsorVault?.address) {
+                try {
+                    const bps = await publicClient.readContract({
+                        address: CONTRACTS.SponsorVault.address,
+                        abi: CONTRACTS.SponsorVault.abi,
+                        functionName: "overheadBps",
+                    });
+                    overheadBps = BigInt(bps);
+                    setCalcOverheadBps(overheadBps.toString());
+                } catch {
+                    // ignore if read fails
+                }
+            }
+
+            const innerGas = BigInt(calcInnerGas || "0");
+            const outerBuffer = BigInt(calcOuterBuffer || "0");
+            const totalGas = innerGas + outerBuffer;
+
+            const baseCost = totalGas * gasPrice;
+            const overheadWei = (baseCost * overheadBps) / 10000n;
+            const chargedAmount = baseCost + overheadWei;
+
+            setCalcResult({
+                gasPrice: gasPrice.toString(),
+                totalGas: totalGas.toString(),
+                baseCost: baseCost.toString(),
+                overheadWei: overheadWei.toString(),
+                chargedAmount: chargedAmount.toString(),
+            });
+        } catch (e) {
+            pushLog(`[ERROR][CALC] ${e.shortMessage || e.message}`);
+        }
+    }
+
+    async function handleSetMaxCostPerVote() {
+        try {
+            if (!walletClient) throw new Error("WalletClient not ready");
+            if (!effectiveAddress) throw new Error("VotingRoom address missing");
+            if (!calcResult?.chargedAmount) throw new Error("Hitung dulu Gas Cost Calculator (Estimate)");
+
+            const txHash = await walletClient.writeContract({
+                address: effectiveAddress,
+                abi: contract.abi,
+                functionName: "setMaxCostPerVote",
+                args: [BigInt(calcResult.chargedAmount)],
+                chain,
+            });
+
+            pushLog(`[TX] setMaxCostPerVote(${calcResult.chargedAmount}) => ${txHash}`);
+        } catch (e) {
+            pushLog(`[ERROR][TX] setMaxCostPerVote: ${e.shortMessage || e.message}`);
         }
     }
 
@@ -329,6 +459,61 @@ export default function App() {
                                     <span>Enable Gasless vote()</span>
                                 </label>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {selected === "VotingRoom" && (
+                    <div className="card mini">
+                        <div className="cardTitle">Gas Cost Calculator (per vote)</div>
+                        <div className="cardBody">
+                            <InputField
+                                label="innerGas (vote call)"
+                                value={calcInnerGas}
+                                onChange={setCalcInnerGas}
+                                placeholder="500000"
+                            />
+                            <InputField
+                                label="outerBuffer (forwarder overhead)"
+                                value={calcOuterBuffer}
+                                onChange={setCalcOuterBuffer}
+                                placeholder="250000"
+                            />
+                            <InputField
+                                label="gasPrice (gwei)"
+                                value={calcGasPriceGwei}
+                                onChange={setCalcGasPriceGwei}
+                                placeholder="auto on estimate"
+                            />
+                            <InputField
+                                label="overheadBps (from SponsorVault)"
+                                value={calcOverheadBps}
+                                onChange={setCalcOverheadBps}
+                                placeholder="auto on estimate"
+                            />
+
+                            <div className="row">
+                                <button className="btn action" onClick={handleEstimateGasCost}>
+                                    Estimate
+                                </button>
+                                <button className="btn action" onClick={handleSetMaxCostPerVote}>
+                                    Set maxCostPerVote
+                                </button>
+                            </div>
+
+                            {calcResult && (
+                                <div className="hint">
+                                    totalGas={calcResult.totalGas} | gasPrice={calcResult.gasPrice} wei
+                                    <br />
+                                    baseCost={calcResult.baseCost} wei ({formatWeiToEth(calcResult.baseCost)} ETH)
+                                    <br />
+                                    overhead={calcResult.overheadWei} wei ({formatWeiToEth(calcResult.overheadWei)} ETH)
+                                    <br />
+                                    suggested maxCostPerVoteWei={calcResult.chargedAmount} ({formatWeiToEth(calcResult.chargedAmount)} ETH)
+                                    <br />
+                                    suggested min roomBalance (2x)={String(BigInt(calcResult.chargedAmount) * 2n)} ({formatWeiToEth(String(BigInt(calcResult.chargedAmount) * 2n))} ETH)
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -405,5 +590,19 @@ function stringify(x) {
         return JSON.stringify(x, (_, v) => (typeof v === "bigint" ? v.toString() : v));
     } catch {
         return String(x);
+    }
+}
+
+function formatWeiToEth(weiValue, maxDecimals = 6) {
+    try {
+        const wei = BigInt(weiValue);
+        const base = 1_000_000_000_000_000_000n;
+        const whole = wei / base;
+        const frac = wei % base;
+        if (maxDecimals <= 0) return whole.toString();
+        const fracStr = frac.toString().padStart(18, "0").slice(0, maxDecimals);
+        return `${whole}.${fracStr}`.replace(/\.?0+$/, "");
+    } catch {
+        return "0";
     }
 }
