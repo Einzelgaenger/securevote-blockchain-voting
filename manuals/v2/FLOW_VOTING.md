@@ -4,7 +4,9 @@ Create Room (pay registration fee)
 ↓
 Topup Deposit (ETH)
 ↓
-Add Voters + Credits
+Set MaxCostPerVoteWei (ETH)
+↓
+*Add Voters + Credits
 ↓
 Add Candidates
 ↓
@@ -12,7 +14,7 @@ startVoting()
 ↓
 Voters vote (gasless)
 ↓
-endVoting()
+endVoting() | (optional) stopVoting()
 ↓
 closeRound(winner)
 ↓
