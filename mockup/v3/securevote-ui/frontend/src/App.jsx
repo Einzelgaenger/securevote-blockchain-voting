@@ -131,7 +131,7 @@ export default function App() {
                 address: effectiveAddress,
                 abi: contract.abi,
                 functionName: fn.name,
-                args: args.map((a) => (a === "" ? undefined : coerceArg(a))),
+                args: buildArgs(fn, args),
             });
             pushLog(`[CALL] ${fn.name} => ${stringify(res)}`);
         } catch (e) {
@@ -146,7 +146,7 @@ export default function App() {
                 address: effectiveAddress,
                 abi: contract.abi,
                 functionName: fn.name,
-                args: args.map((a) => (a === "" ? undefined : coerceArg(a))),
+                args: buildArgs(fn, args),
                 value: BigInt(valueWei || "0"),
                 chain,
             });
@@ -582,6 +582,16 @@ function coerceArg(val) {
     if (/^\d+$/.test(v)) return BigInt(v);
 
     return v;
+}
+
+function buildArgs(fn, args) {
+    return (fn.inputs || []).map((inp, idx) => {
+        const raw = args?.[idx] ?? "";
+        if (String(raw).trim() === "") {
+            throw new Error(`Input ${inp.name || `arg${idx}`} (${inp.type}) wajib diisi`);
+        }
+        return coerceArg(raw);
+    });
 }
 
 function stringify(x) {

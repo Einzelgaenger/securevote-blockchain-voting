@@ -2,18 +2,22 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@rainbow-me/rainbowkit/styles.css";
 import { getDefaultConfig, RainbowKitProvider, ConnectButton } from "@rainbow-me/rainbowkit";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, http } from "wagmi";
 import { sepolia } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.jsx";
 import "./styles.css";
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+const sepoliaRpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
 
 const config = getDefaultConfig({
     appName: "SecureVote UI",
     projectId,
     chains: [sepolia],
+    transports: {
+        [sepolia.id]: http(sepoliaRpcUrl || undefined),
+    },
     ssr: false
 });
 
