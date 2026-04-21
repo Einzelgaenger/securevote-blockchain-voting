@@ -138,7 +138,7 @@ Dikeluarkan setelah room baru berhasil dibuat.
 ### Enum
 
 ```solidity
-enum State { Inactive, Active, Ended, Closed }
+enum State { Inactive, Active, Paused, Ended, Closed }
 ```
 
 Arti state:
@@ -146,6 +146,7 @@ Arti state:
 ```text
 Inactive = setup / belum mulai
 Active   = voting sedang berjalan
+Paused   = voting dipause sementara
 Ended    = voting selesai, belum final close
 Closed   = round sudah ditutup
 ```
@@ -290,7 +291,7 @@ roundVotes[1][2] = total vote kandidat ID 2 di round 1
 struct RoundSummary {
     uint256 winnerId;
     string winnerName;
-    uint256 totalVotesWeight;
+    uint256 winnerVoteCount;
     uint256 startAt;
     uint256 endAt;
     bool closed;
@@ -301,7 +302,7 @@ struct RoundSummary {
 mapping(uint256 round => RoundSummary) public roundSummaries;
 ```
 
-Menyimpan hasil akhir setiap round.
+Menyimpan hasil akhir setiap round. `winnerId` tetap dipilih manual saat `closeRound(winnerId)`, sedangkan `winnerVoteCount` diambil dari `roundVotes[currentRound][winnerId]`.
 
 ### Admin Functions
 
@@ -412,13 +413,13 @@ Mulai voting. State berubah dari `Inactive` ke `Active`.
 stopVoting()
 ```
 
-Stop voting. State berubah dari `Active` ke `Ended`.
+Pause voting. State berubah dari `Active` ke `Paused`. Setelah paused, admin hanya bisa resume dengan `startVoting()` atau finish dengan `endVoting()`. Tidak bisa langsung `closeRound()`.
 
 ```solidity
 endVoting()
 ```
 
-Mengakhiri voting dan menyimpan timestamp akhir.
+Mengakhiri voting dan menyimpan timestamp akhir. Function ini bisa dipanggil dari state `Active` atau `Paused`.
 
 ```solidity
 closeRound(uint256 winnerId)

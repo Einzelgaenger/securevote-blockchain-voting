@@ -17,7 +17,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     // ============ Enums ============
     
-    enum State { Inactive, Active, Ended, Closed }
+    enum State { Inactive, Active, Paused, Ended, Closed }
     
     // ============ Constants ============
     
@@ -83,7 +83,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     struct RoundSummary {
         uint256 winnerId;
         string winnerName;
-        uint256 totalVotesWeight;
+        uint256 winnerVoteCount;
         uint256 startAt;
         uint256 endAt;
         bool closed;
@@ -97,7 +97,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     event RoundStarted(address indexed room, uint256 indexed round);
     event RoundStopped(address indexed room, uint256 indexed round);
     event RoundEnded(address indexed room, uint256 indexed round);
-    event RoundClosed(address indexed room, uint256 indexed round, uint256 winnerId, uint256 totalWeight);
+    event RoundClosed(address indexed room, uint256 indexed round, uint256 winnerId, uint256 winnerVoteCount);
     
     event VoterAdded(address indexed room, address indexed voter);
     event VoterRemoved(address indexed room, address indexed voter);
@@ -128,6 +128,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     error OnlyRoomAdmin();
     error InvalidState();
     error VoterNotEligible();
+    error VoterAlreadyRegistered(address voter);
+    error DuplicateVoter(address voter);
     error AlreadyVotedThisRound();
     error NoCredit();
     error CandidateNotFound();
@@ -153,6 +155,11 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     modifier notInState(State forbidden) {
         if (state == forbidden) revert InvalidState();
+        _;
+    }
+
+    modifier notActiveOrPaused() {
+        if (state == State.Active || state == State.Paused) revert InvalidState();
         _;
     }
     
@@ -199,7 +206,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Set maximum cost per vote
      */
-    function setMaxCostPerVote(uint256 newCost) external onlyAdmin {
+    function setMaxCostPerVote(uint256 newCost) external onlyAdmin notActiveOrPaused {
         uint256 oldCost = maxCostPerVoteWei;
         maxCostPerVoteWei = newCost;
         
@@ -209,8 +216,9 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Add voter to registry
      */
-    function addVoter(address voter) external onlyAdmin notInState(State.Active) {
+    function addVoter(address voter) external onlyAdmin notActiveOrPaused {
         if (voter == address(0)) revert ZeroAddress();
+        if (_isVoterEligible(voter)) revert VoterAlreadyRegistered(voter);
         
         voterVersion[voter] = voterRegistryVersion;
         
@@ -221,7 +229,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @notice Remove voter from registry with automatic credit pooling
      * @dev Credits returned to availableCreditsPool for reuse
      */
-    function removeVoter(address voter) external onlyAdmin notInState(State.Active) {
+    function removeVoter(address voter) external onlyAdmin notActiveOrPaused {
         uint256 refundAmount = voterCredit[voter];
         
         // Remove voter
@@ -248,53 +256,23 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @param voter Target voter address
      * @param newAmount New credit amount to SET (replaces current balance)
      */
-    function grantCredit(address voter, uint256 newAmount) external onlyAdmin notInState(State.Active) {
+    function grantCredit(address voter, uint256 newAmount) external onlyAdmin notActiveOrPaused {
         if (!_isVoterEligible(voter)) revert VoterNotEligible();
-        
-        uint256 currentCredit = voterCredit[voter];
-        
-        if (newAmount == currentCredit) {
-            return; // No change needed
-        }
-        
-        if (newAmount > currentCredit) {
-            // INCREASE: need to add credits
-            uint256 increaseAmount = newAmount - currentCredit;
-            
-            voterCredit[voter] = newAmount;
-            totalCreditsGranted += increaseAmount;
-            
-            // Smart allocation from pool first
-            if (availableCreditsPool >= increaseAmount) {
-                // Pool covers all
-                availableCreditsPool -= increaseAmount;
-                emit PoolUpdated(address(this), availableCreditsPool, increaseAmount, "grant-from-pool");
-            } else if (availableCreditsPool > 0) {
-                // Pool partially covers
-                uint256 fromPool = availableCreditsPool;
-                uint256 newCreditsNeeded = increaseAmount - fromPool;
-                
-                availableCreditsPool = 0;
-                totalCreditsInSystem += newCreditsNeeded;
-                
-                emit PoolUpdated(address(this), 0, fromPool, "grant-partial-pool");
-            } else {
-                // Pool empty - all from system
-                totalCreditsInSystem += increaseAmount;
-            }
-        } else {
-            // DECREASE: return excess to pool
-            uint256 decreaseAmount = currentCredit - newAmount;
-            
-            voterCredit[voter] = newAmount;
-            totalCreditsGranted -= decreaseAmount;
-            availableCreditsPool += decreaseAmount;
-            
-            emit PoolUpdated(address(this), availableCreditsPool, decreaseAmount, "grant-refund-to-pool");
-        }
-        
-        emit CreditUpdated(address(this), voter, currentCredit, newAmount);
-        emit CreditGranted(address(this), voter, newAmount, voterCredit[voter]);
+        _setVoterCredit(voter, newAmount);
+    }
+
+    /**
+     * @notice Add voter and set credit in one transaction
+     * @dev Reverts if voter is already registered in the current registry version
+     */
+    function addVoterWithCredit(address voter, uint256 credit) external onlyAdmin notActiveOrPaused {
+        if (voter == address(0)) revert ZeroAddress();
+        if (_isVoterEligible(voter)) revert VoterAlreadyRegistered(voter);
+
+        voterVersion[voter] = voterRegistryVersion;
+        emit VoterAdded(address(this), voter);
+
+        _setVoterCredit(voter, credit);
     }
     
     /**
@@ -302,7 +280,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @dev Can only burn from available pool, not from granted credits
      * @param amount Amount of credits to burn from pool
      */
-    function burnPoolCredits(uint256 amount) external onlyAdmin notInState(State.Active) {
+    function burnPoolCredits(uint256 amount) external onlyAdmin notActiveOrPaused {
         if (amount == 0) revert InvalidAmount();
         if (amount > availableCreditsPool) revert InsufficientPoolBalance(amount, availableCreditsPool);
         
@@ -316,7 +294,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Add candidate
      */
-    function addCandidate(uint256 candidateId, string calldata name) external onlyAdmin notInState(State.Active) {
+    function addCandidate(uint256 candidateId, string calldata name) external onlyAdmin notActiveOrPaused {
         candidateVersion[candidateId] = candidateRegistryVersion;
         candidateName[candidateId] = name;
         
@@ -326,7 +304,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Remove candidate
      */
-    function removeCandidate(uint256 candidateId) external onlyAdmin notInState(State.Active) {
+    function removeCandidate(uint256 candidateId) external onlyAdmin notActiveOrPaused {
         candidateVersion[candidateId] = 0;
         
         emit CandidateRemoved(address(this), candidateId);
@@ -340,11 +318,11 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @dev Limited to MAX_BATCH_SIZE to prevent out-of-gas errors
      * @param voters Array of voter addresses to add (max 500)
      */
-    function batchAddVoters(address[] calldata voters) external onlyAdmin notInState(State.Active) {
+    function batchAddVoters(address[] calldata voters) external onlyAdmin notActiveOrPaused {
         if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
+        _validateUniqueNewVoters(voters);
         
         for (uint256 i = 0; i < voters.length; i++) {
-            if (voters[i] == address(0)) revert ZeroAddress();
             voterVersion[voters[i]] = voterRegistryVersion;
             emit VoterAdded(address(this), voters[i]);
         }
@@ -352,21 +330,22 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     /**
      * @notice Batch set credits for multiple voters (SET behavior, not ADD)
-     * @dev Uses pool first, then adds new credits. Skips duplicate voters.
+     * @dev Uses pool first, then adds new credits. Duplicate voters are rejected.
      * @param voters Array of voter addresses (max 500)
      * @param amounts Array of credit amounts to SET (same length as voters)
      */
     function batchGrantCredits(
         address[] calldata voters,
         uint256[] calldata amounts
-    ) external onlyAdmin notInState(State.Active) {
+    ) external onlyAdmin notActiveOrPaused {
         if (voters.length != amounts.length) revert InvalidAmount();
         if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
+        _validateUniqueInputVoters(voters);
         
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Process all voters (if duplicates exist, last value wins)
+        // Process all voters. Duplicate input is rejected to keep accounting exact.
         for (uint256 i = 0; i < voters.length; i++) {
             if (!_isVoterEligible(voters[i])) revert VoterNotEligible();
             
@@ -421,29 +400,25 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Batch add voters AND set credits in ONE transaction
      * @dev MOST EFFICIENT for Excel upload (add + set = 1 popup!)
-     * @dev Uses SET behavior for credits, skips duplicate voters
+     * @dev Uses SET behavior for credits. Duplicate or already registered voters are rejected.
      * @param voters Array of voter addresses (max 500)
      * @param credits Array of credit amounts to SET
      */
     function batchAddVotersWithCredits(
         address[] calldata voters,
         uint256[] calldata credits
-    ) external onlyAdmin notInState(State.Active) {
+    ) external onlyAdmin notActiveOrPaused {
         if (voters.length != credits.length) revert InvalidAmount();
         if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
+        _validateUniqueNewVoters(voters);
         
         uint256 totalIncrease = 0;
         uint256 totalDecrease = 0;
         
-        // Process all voters (if duplicates exist, last value wins)
+        // Process all new voters. Duplicate or already registered voters are rejected.
         for (uint256 i = 0; i < voters.length; i++) {
-            if (voters[i] == address(0)) revert ZeroAddress();
-            
-            // Add voter if not already eligible
-            if (!_isVoterEligible(voters[i])) {
-                voterVersion[voters[i]] = voterRegistryVersion;
-                emit VoterAdded(address(this), voters[i]);
-            }
+            voterVersion[voters[i]] = voterRegistryVersion;
+            emit VoterAdded(address(this), voters[i]);
             
             // SET credit (not add)
             uint256 currentCredit = voterCredit[voters[i]];
@@ -501,7 +476,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     function batchAddCandidates(
         uint256[] calldata candidateIds,
         string[] calldata names
-    ) external onlyAdmin notInState(State.Active) {
+    ) external onlyAdmin notActiveOrPaused {
         if (candidateIds.length != names.length) revert InvalidAmount();
         if (candidateIds.length > MAX_BATCH_SIZE) revert ArrayTooLarge(candidateIds.length, MAX_BATCH_SIZE);
         
@@ -517,7 +492,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @dev Credits returned to pool for reuse. Efficient batch cleanup.
      * @param voters Array of voter addresses to remove (max 500)
      */
-    function batchRemoveVoters(address[] calldata voters) external onlyAdmin notInState(State.Active) {
+    function batchRemoveVoters(address[] calldata voters) external onlyAdmin notActiveOrPaused {
         if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
         
         uint256 totalRefund = 0;
@@ -549,7 +524,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @dev Use for cleanup/reset specific candidates
      * @param candidateIds Array of candidate IDs to remove (max 500)
      */
-    function batchRemoveCandidates(uint256[] calldata candidateIds) external onlyAdmin notInState(State.Active) {
+    function batchRemoveCandidates(uint256[] calldata candidateIds) external onlyAdmin notActiveOrPaused {
         if (candidateIds.length > MAX_BATCH_SIZE) revert ArrayTooLarge(candidateIds.length, MAX_BATCH_SIZE);
         
         for (uint256 i = 0; i < candidateIds.length; i++) {
@@ -563,11 +538,15 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice Start new voting round
      */
-    function startVoting() external onlyAdmin inState(State.Inactive) {
-        currentRound++;
+    function startVoting() external onlyAdmin {
+        if (state == State.Inactive) {
+            currentRound++;
+            roundSummaries[currentRound].startAt = block.timestamp;
+        } else if (state != State.Paused) {
+            revert InvalidState();
+        }
+
         state = State.Active;
-        
-        roundSummaries[currentRound].startAt = block.timestamp;
         
         emit RoundStarted(address(this), currentRound);
     }
@@ -576,7 +555,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @notice Stop voting (pause)
      */
     function stopVoting() external onlyAdmin inState(State.Active) {
-        state = State.Ended;
+        state = State.Paused;
         
         emit RoundStopped(address(this), currentRound);
     }
@@ -584,7 +563,9 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     /**
      * @notice End voting round
      */
-    function endVoting() external onlyAdmin inState(State.Active) {
+    function endVoting() external onlyAdmin {
+        if (state != State.Active && state != State.Paused) revert InvalidState();
+
         state = State.Ended;
         
         roundSummaries[currentRound].endAt = block.timestamp;
@@ -600,14 +581,15 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         if (!_isCandidateValid(winnerId)) revert CandidateNotFound();
         
         RoundSummary storage summary = roundSummaries[currentRound];
+        uint256 winnerVoteCount = roundVotes[currentRound][winnerId];
         summary.winnerId = winnerId;
         summary.winnerName = candidateName[winnerId]; // Save snapshot!
-        summary.totalVotesWeight = totalCreditsUsed;
+        summary.winnerVoteCount = winnerVoteCount;
         summary.closed = true;
         
         state = State.Closed;
         
-        emit RoundClosed(address(this), currentRound, winnerId, totalCreditsUsed);
+        emit RoundClosed(address(this), currentRound, winnerId, winnerVoteCount);
     }
     
     /**
@@ -664,6 +646,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         
         // Consume all credit
         voterCredit[voter] = 0;
+        totalCreditsGranted -= weight;
         totalCreditsUsed += weight;
         
         // Record vote
@@ -684,6 +667,63 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     
     function _isCandidateValid(uint256 candidateId) internal view returns (bool) {
         return candidateVersion[candidateId] == candidateRegistryVersion;
+    }
+
+    function _validateUniqueInputVoters(address[] calldata voters) internal pure {
+        for (uint256 i = 0; i < voters.length; i++) {
+            if (voters[i] == address(0)) revert ZeroAddress();
+            for (uint256 j = i + 1; j < voters.length; j++) {
+                if (voters[i] == voters[j]) revert DuplicateVoter(voters[i]);
+            }
+        }
+    }
+
+    function _validateUniqueNewVoters(address[] calldata voters) internal view {
+        _validateUniqueInputVoters(voters);
+        for (uint256 i = 0; i < voters.length; i++) {
+            if (_isVoterEligible(voters[i])) revert VoterAlreadyRegistered(voters[i]);
+        }
+    }
+
+    function _setVoterCredit(address voter, uint256 newAmount) internal {
+        uint256 currentCredit = voterCredit[voter];
+        
+        if (newAmount == currentCredit) {
+            return; // No change needed
+        }
+        
+        if (newAmount > currentCredit) {
+            uint256 increaseAmount = newAmount - currentCredit;
+            
+            voterCredit[voter] = newAmount;
+            totalCreditsGranted += increaseAmount;
+            
+            if (availableCreditsPool >= increaseAmount) {
+                availableCreditsPool -= increaseAmount;
+                emit PoolUpdated(address(this), availableCreditsPool, increaseAmount, "grant-from-pool");
+            } else if (availableCreditsPool > 0) {
+                uint256 fromPool = availableCreditsPool;
+                uint256 newCreditsRequired = increaseAmount - fromPool;
+                
+                availableCreditsPool = 0;
+                totalCreditsInSystem += newCreditsRequired;
+                
+                emit PoolUpdated(address(this), 0, fromPool, "grant-partial-pool");
+            } else {
+                totalCreditsInSystem += increaseAmount;
+            }
+        } else {
+            uint256 decreaseAmount = currentCredit - newAmount;
+            
+            voterCredit[voter] = newAmount;
+            totalCreditsGranted -= decreaseAmount;
+            availableCreditsPool += decreaseAmount;
+            
+            emit PoolUpdated(address(this), availableCreditsPool, decreaseAmount, "grant-refund-to-pool");
+        }
+        
+        emit CreditUpdated(address(this), voter, currentCredit, newAmount);
+        emit CreditGranted(address(this), voter, newAmount, voterCredit[voter]);
     }
     
     function getVotes(uint256 round, uint256 candidateId) external view returns (uint256) {
@@ -707,7 +747,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
      * @dev Only callable by roomAdmin when not Active
      * @param amount Amount of ETH to withdraw (in wei)
      */
-    function withdrawDeposit(uint256 amount) external onlyAdmin notInState(State.Active) nonReentrant {
+    function withdrawDeposit(uint256 amount) external onlyAdmin notActiveOrPaused nonReentrant {
         if (amount == 0) revert InvalidAmount();
         
         uint256 balanceBefore = address(this).balance;

@@ -49,6 +49,17 @@
 	{
 		"inputs": [
 			{
+				"internalType": "address",
+				"name": "voter",
+				"type": "address"
+			}
+		],
+		"name": "DuplicateVoter",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
 				"internalType": "uint256",
 				"name": "requested",
 				"type": "uint256"
@@ -111,6 +122,17 @@
 	{
 		"inputs": [],
 		"name": "VoterNotEligible",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "voter",
+				"type": "address"
+			}
+		],
+		"name": "VoterAlreadyRegistered",
 		"type": "error"
 	},
 	{
@@ -373,7 +395,7 @@
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "totalWeight",
+				"name": "winnerVoteCount",
 				"type": "uint256"
 			}
 		],
@@ -577,6 +599,24 @@
 			}
 		],
 		"name": "addVoter",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "voter",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "credit",
+				"type": "uint256"
+			}
+		],
+		"name": "addVoterWithCredit",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
@@ -892,7 +932,7 @@
 					},
 					{
 						"internalType": "uint256",
-						"name": "totalVotesWeight",
+						"name": "winnerVoteCount",
 						"type": "uint256"
 					},
 					{
@@ -1198,7 +1238,7 @@
 			},
 			{
 				"internalType": "uint256",
-				"name": "totalVotesWeight",
+				"name": "winnerVoteCount",
 				"type": "uint256"
 			},
 			{

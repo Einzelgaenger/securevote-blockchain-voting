@@ -1,55 +1,267 @@
-Ya, ada beberapa kesalahan/risiko logika yang cukup penting.
+# Logic Review Notes - 21 April 2026
 
-**Findings**
+Dokumen ini mencatat risiko logika pada sistem SecureVote v2 dan update yang perlu dilakukan.
 
-1. **Credit accounting salah setelah voter vote**
-   Di [VotingRoom.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/VotingRoom.sol:654>), `vote()` mengubah `voterCredit[voter] = 0` dan menaikkan `totalCreditsUsed`, tapi tidak mengurangi `totalCreditsGranted`.
+## Findings
 
-   Dampaknya: `totalCreditsGranted` jadi tidak akurat. Setelah voter memakai credit, sistem masih menganggap credit itu “granted”. Kalau lanjut `prepareNextRound()` lalu admin grant credit lagi, angka `totalCreditsGranted` bisa makin dobel.
+### 1. Credit accounting salah setelah voter vote
 
-   Seharusnya saat vote:
+Lokasi:
 
-   ```solidity
-   totalCreditsGranted -= weight;
-   ```
+```text
+contracts/v2/VotingRoom.sol
+function vote(uint256 candidateId)
+```
 
-2. **Batch credit bisa revert / salah hitung jika ada duplicate voter**
-   Di [VotingRoom.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/VotingRoom.sol:359>) dan [VotingRoom.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/VotingRoom.sol:428>), komentar bilang duplicate voter “last value wins”, tapi perhitungan `totalIncrease` dan `totalDecrease` tetap menghitung tiap kemunculan.
+Saat voter melakukan vote, contract mengubah:
 
-   Contoh input:
+```solidity
+voterCredit[voter] = 0;
+totalCreditsUsed += weight;
+```
 
-   ```text
-   voters  = [A, A]
-   credits = [20, 5]
-   ```
+Namun `totalCreditsGranted` tidak dikurangi.
 
-   Loop bisa menghitung increase dan decrease untuk address yang sama, lalu saat apply global counter bisa underflow/revert atau menghasilkan accounting salah.
+Dampak:
 
-3. **`closeRound(winnerId)` tidak membuktikan winner benar-benar vote tertinggi**
-   Di [VotingRoom.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/VotingRoom.sol:599>), admin bisa memasukkan `winnerId` kandidat valid apa pun. Contract tidak mengecek apakah kandidat itu punya suara paling tinggi.
+- `totalCreditsGranted` tetap menghitung credit yang sebenarnya sudah habis dipakai.
+- Setelah `prepareNextRound()` dan grant credit ulang, angka credit bisa makin tidak konsisten.
 
-   Kalau sistem memang mempercayai admin untuk input pemenang manual, ini bukan bug teknis. Tapi kalau blockchain dimaksudkan sebagai sumber kebenaran hasil voting, ini logika yang lemah.
+Rekomendasi fix:
 
-4. **`vote()` tidak benar-benar wajib lewat forwarder**
-   Komentar bilang vote “MUST be called via ERC-2771 forwarder”, tapi di [VotingRoom.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/VotingRoom.sol:654>) tidak ada check bahwa `msg.sender` adalah trusted forwarder.
+```solidity
+totalCreditsGranted -= weight;
+```
 
-   Akibatnya voter bisa call `vote()` langsung dan bayar gas sendiri. Kalau direct vote memang boleh, aman. Kalau requirement-nya “gasless only”, perlu guard.
+diletakkan setelah `weight` diketahui dan sebelum/bersamaan dengan konsumsi credit voter.
 
-5. **`SponsorVault.settleAndWithdraw()` terlalu percaya pada relayer**
-   Di [SponsorVault.sol](</c:/Users/4260001/Documents/New folder/New folder/securevote-blockchain-voting/contracts/v2/SponsorVault.sol:151>), relayer allowlisted bisa mengirim `room`, `actionId`, dan `chargedAmount`. Contract hanya cek relayer allowlisted, action belum settled, dan saldo cukup.
+### 2. Batch credit bisa salah hitung jika ada duplicate voter
 
-   Artinya kalau relayer private key bocor atau relayer jahat, ia bisa menguras deposit room dengan actionId palsu. Relayer backend memang mengambil `actionId` dari event, tapi vault contract sendiri tidak bisa memverifikasi itu.
+Lokasi:
 
-6. **`stopVoting()` tidak mengisi `endAt`**
-   `endVoting()` mengisi `roundSummaries[currentRound].endAt`, tapi `stopVoting()` tidak. Kalau flow memakai `stopVoting()` lalu `closeRound()`, summary round tidak punya waktu selesai.
+```text
+contracts/v2/VotingRoom.sol
+function batchGrantCredits(...)
+function batchAddVotersWithCredits(...)
+```
 
-**Prioritas Fix**
+Komentar function menyebut duplicate voter memakai prinsip "last value wins", tetapi perhitungan `totalIncrease` dan `totalDecrease` tetap menghitung setiap kemunculan address.
 
-1. Fix `totalCreditsGranted` saat `vote()`.
-2. Reject duplicate voter di batch functions, atau pre-aggregate dulu.
-3. Tentukan apakah winner harus dihitung on-chain atau boleh manual.
-4. Kalau gasless wajib, enforce `msg.sender == trustedForwarder`.
-5. Perkuat settlement vault, minimal dengan desain action proof / room-authorized settlement.
-6. Samakan behavior `stopVoting()` dan `endVoting()` soal `endAt`.
+Contoh:
 
-Jadi jawabannya: iya, ada beberapa logic issue. Yang paling perlu dibenerin dulu menurutku adalah credit accounting di `vote()` dan duplicate handling di batch credit, karena itu bisa langsung bikin data credit/pool tidak konsisten.
+```text
+voters  = [A, A]
+credits = [20, 5]
+```
+
+Risiko:
+
+- Counter global seperti `totalCreditsGranted`, `availableCreditsPool`, dan `totalCreditsInSystem` bisa salah.
+- Dalam kondisi tertentu bisa revert karena underflow.
+
+Rekomendasi fix:
+
+1. Reject duplicate voter dalam input batch, atau
+2. Pre-aggregate input off-chain/on-chain sehingga setiap voter hanya diproses sekali dengan nilai final.
+
+Status update:
+
+- `addVoter(voter)` sekarang revert jika voter sudah terdaftar.
+- `batchAddVoters(voters)` sekarang reject duplicate input dan voter yang sudah terdaftar.
+- `batchAddVotersWithCredits(voters, credits)` sekarang reject duplicate input dan voter yang sudah terdaftar.
+- `batchGrantCredits(voters, amounts)` sekarang reject duplicate input agar accounting tetap konsisten.
+- Ditambahkan `addVoterWithCredit(voter, credit)` untuk add satu voter sekaligus set credit.
+
+### 3. RoundSummary harus menyimpan vote count milik winner, bukan total semua vote
+
+Keputusan desain:
+
+- `closeRound(winnerId)` tetap menerima `winnerId` secara manual dari admin.
+- Contract tidak perlu otomatis menentukan pemenang tertinggi.
+- Namun data yang disimpan pada `roundSummaries` dan `getRoundSummary` harus merepresentasikan winner yang dipilih.
+
+Format yang seharusnya dikembalikan:
+
+```text
+winnerId
+winnerName
+winnerVoteCount
+startAt
+endAt
+closed
+```
+
+Sebelumnya:
+
+```solidity
+struct RoundSummary {
+    uint256 winnerId;
+    string winnerName;
+    uint256 totalVotesWeight;
+    uint256 startAt;
+    uint256 endAt;
+    bool closed;
+}
+```
+
+Masalah:
+
+- `totalVotesWeight` berisi `totalCreditsUsed`, yaitu total semua vote dalam round.
+- Itu bukan vote count milik winner.
+
+Update yang benar:
+
+```solidity
+struct RoundSummary {
+    uint256 winnerId;
+    string winnerName;
+    uint256 winnerVoteCount;
+    uint256 startAt;
+    uint256 endAt;
+    bool closed;
+}
+```
+
+Pada `closeRound(winnerId)`:
+
+```solidity
+uint256 winnerVoteCount = roundVotes[currentRound][winnerId];
+
+summary.winnerId = winnerId;
+summary.winnerName = candidateName[winnerId];
+summary.winnerVoteCount = winnerVoteCount;
+summary.closed = true;
+```
+
+Event juga sebaiknya ikut diperjelas:
+
+```solidity
+event RoundClosed(
+    address indexed room,
+    uint256 indexed round,
+    uint256 winnerId,
+    uint256 winnerVoteCount
+);
+```
+
+Status update:
+
+- Sudah diupdate pada `contracts/v2/VotingRoom.sol`.
+- ABI yang dipakai UI perlu disesuaikan atau regenerate setelah compile.
+
+### 4. stopVoting harus menjadi pause, bukan end round
+
+Lokasi:
+
+```text
+contracts/v2/VotingRoom.sol
+function stopVoting()
+```
+
+Keputusan desain terbaru:
+
+- `stopVoting()` hanya melakukan pause.
+- State berubah dari `Active` menjadi `Paused`.
+- Saat `Paused`, admin hanya boleh `startVoting()` untuk resume atau `endVoting()` untuk finish.
+- Admin tidak boleh langsung `closeRound()` setelah `stopVoting()`.
+
+Update yang benar:
+
+```solidity
+enum State { Inactive, Active, Paused, Ended, Closed }
+```
+
+```solidity
+function stopVoting() external onlyAdmin inState(State.Active) {
+    state = State.Paused;
+
+    emit RoundStopped(address(this), currentRound);
+}
+```
+
+```solidity
+function startVoting() external onlyAdmin {
+    if (state == State.Inactive) {
+        currentRound++;
+        roundSummaries[currentRound].startAt = block.timestamp;
+    } else if (state != State.Paused) {
+        revert InvalidState();
+    }
+
+    state = State.Active;
+    emit RoundStarted(address(this), currentRound);
+}
+```
+
+```solidity
+function endVoting() external onlyAdmin {
+    if (state != State.Active && state != State.Paused) revert InvalidState();
+
+    state = State.Ended;
+    roundSummaries[currentRound].endAt = block.timestamp;
+
+    emit RoundEnded(address(this), currentRound);
+}
+```
+
+Status update:
+
+- Sudah diupdate pada `contracts/v2/VotingRoom.sol`.
+
+### 5. vote tidak benar-benar wajib lewat forwarder
+
+Lokasi:
+
+```text
+contracts/v2/VotingRoom.sol
+function vote(uint256 candidateId)
+```
+
+Komentar menyebut vote harus melalui ERC-2771 forwarder, tetapi tidak ada guard bahwa caller adalah trusted forwarder.
+
+Keputusan desain:
+
+- Direct vote diperbolehkan.
+- Gasless vote tetap tersedia lewat `MinimalForwarder`.
+- Karena itu, ini bukan bug dan tidak perlu dimitigasi.
+
+### 6. SponsorVault settlement memakai trust assumption pada relayer
+
+Lokasi:
+
+```text
+contracts/v2/SponsorVault.sol
+function settleAndWithdraw(address room, bytes32 actionId, uint256 chargedAmount)
+```
+
+Contract memeriksa:
+
+- caller adalah relayer allowlisted,
+- `actionId` belum pernah settled,
+- saldo room cukup.
+
+Keputusan desain:
+
+- Relayer sudah diverifikasi terlebih dahulu sebelum masuk allowlist.
+- Settlement memang mempercayai relayer allowlisted sebagai trusted service.
+- Karena itu, validasi tambahan proof on-chain untuk `actionId` tidak diterapkan saat ini.
+
+Residual risk yang diterima:
+
+- Jika private key relayer bocor atau relayer allowlisted berperilaku jahat, deposit room tetap berisiko.
+- Risiko ini diterima untuk versi saat ini karena sistem mengandalkan relayer terverifikasi.
+
+## Prioritas Fix
+
+1. Fix `RoundSummary` agar menyimpan `winnerVoteCount`, bukan total semua vote.
+2. Ubah `stopVoting()` menjadi pause dan blok `closeRound()` sampai `endVoting()`.
+3. Fix `totalCreditsGranted` saat `vote()`.
+4. Tangani duplicate voter pada batch credit.
+5. Direct vote sudah diputuskan boleh, jadi tidak perlu guard forwarder-only.
+6. Settlement `SponsorVault` dibiarkan berbasis trusted relayer allowlist.
+
+## Catatan Deploy
+
+Perubahan pada `contracts/v2/VotingRoom.sol` baru berlaku di chain setelah compile dan redeploy implementation baru.
+
+Untuk EIP-1167 clone, room lama biasanya tetap menunjuk ke implementation lama. Room baru harus dibuat dari `RoomFactory` yang memakai implementation baru agar logic terbaru aktif.
