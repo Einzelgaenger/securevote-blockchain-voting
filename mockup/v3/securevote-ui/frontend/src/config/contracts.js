@@ -7,7 +7,7 @@
 //
 // 2. JANGAN PERNAH melakukan vote() ke address implementation ini.
 //
-// 3. Untuk interaksi voting (vote, startVoting, endVoting, closeRound, dll),
+// 3. Untuk interaksi voting (vote, start, stop, restart, reset, dll),
 //    SELALU gunakan address ROOM INSTANCE hasil createRoom()
 //    (contoh: 0xa536...).
 //
@@ -55,7 +55,7 @@ export const CONTRACTS = {
     // - Menghasilkan address VotingRoom clone (EIP-1167)
     // ----------------------------------------------------------
     RoomFactory: {
-        address: "0x35404f230901488BFE187d7edCF31287396E6842", // TODO: isi sesuai deployment
+        address: "0x656AcD46DD9AD2E55A7D6E8beD896B563CC13CB4",
         abi: RoomFactoryAbi,
     },
 
@@ -67,7 +67,7 @@ export const CONTRACTS = {
     //   - reimburse gas relayer
     // ----------------------------------------------------------
     SponsorVault: {
-        address: "0x04d1BB5E8565DF62743212B39F3586d5A9965b67", // TODO: isi sesuai deployment
+        address: "0xd5CdD32D75Cd3d11c100d2F76924AC23E97145d5",
         abi: SponsorVaultAbi,
     },
 
@@ -76,7 +76,7 @@ export const CONTRACTS = {
     // - Dipakai untuk meta-transaction (gasless vote)
     // ----------------------------------------------------------
     MinimalForwarder: {
-        address: "0xdE41F486df655AdA306166a601166DDA5e69e241", // Sepolia
+        address: "0xdF54C2e489a9f32C60B11d6C5605ea66E069135F",
         abi: MinimalForwarderAbi,
     },
 
@@ -86,7 +86,7 @@ export const CONTRACTS = {
     // ✔️ Dipakai untuk ABI & referensi
     // ----------------------------------------------------------
     VotingRoom: {
-        address: "0xc6e866069dc20c0ABAD2a74509Ac9aA928f2f0cF", // IMPLEMENTATION ONLY
+        address: "0x1aAe9b8ec2F0227511c7Aebb7cC911a2110A1136", // IMPLEMENTATION ONLY
         abi: VotingRoomAbi,
     },
 };

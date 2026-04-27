@@ -37,13 +37,25 @@
 		"type": "error"
 	},
 	{
-		"inputs": [],
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "candidateId",
+				"type": "uint256"
+			}
+		],
 		"name": "CandidateNotFound",
 		"type": "error"
 	},
 	{
-		"inputs": [],
-		"name": "InsufficientDeposit",
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "candidateId",
+				"type": "uint256"
+			}
+		],
+		"name": "DuplicateCandidate",
 		"type": "error"
 	},
 	{
@@ -58,22 +70,6 @@
 		"type": "error"
 	},
 	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "requested",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "available",
-				"type": "uint256"
-			}
-		],
-		"name": "InsufficientPoolBalance",
-		"type": "error"
-	},
-	{
 		"inputs": [],
 		"name": "InvalidAmount",
 		"type": "error"
@@ -85,7 +81,12 @@
 	},
 	{
 		"inputs": [],
-		"name": "NoCredit",
+		"name": "NoCandidatesConfigured",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "NoVotersConfigured",
 		"type": "error"
 	},
 	{
@@ -101,6 +102,16 @@
 	{
 		"inputs": [],
 		"name": "ReentrancyGuardReentrantCall",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "RoundAlreadyPrepared",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "RoundNotReady",
 		"type": "error"
 	},
 	{
@@ -132,7 +143,7 @@
 				"type": "address"
 			}
 		],
-		"name": "VoterAlreadyRegistered",
+		"name": "VoterNotFound",
 		"type": "error"
 	},
 	{
@@ -194,93 +205,6 @@
 				"type": "address"
 			},
 			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "newBalance",
-				"type": "uint256"
-			}
-		],
-		"name": "CreditGranted",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "oldCredit",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "newCredit",
-				"type": "uint256"
-			}
-		],
-		"name": "CreditUpdated",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "newSystemTotal",
-				"type": "uint256"
-			}
-		],
-		"name": "CreditsBurned",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
 				"indexed": false,
 				"internalType": "uint256",
 				"name": "oldCost",
@@ -294,62 +218,6 @@
 			}
 		],
 		"name": "MaxCostUpdated",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "newPoolAmount",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "poolChange",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "string",
-				"name": "reason",
-				"type": "string"
-			}
-		],
-		"name": "PoolUpdated",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "voterVersion",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "candidateVersion",
-				"type": "uint256"
-			}
-		],
-		"name": "RegistryReset",
 		"type": "event"
 	},
 	{
@@ -385,21 +253,9 @@
 				"internalType": "uint256",
 				"name": "round",
 				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "winnerId",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "winnerVoteCount",
-				"type": "uint256"
 			}
 		],
-		"name": "RoundClosed",
+		"name": "RoomReset",
 		"type": "event"
 	},
 	{
@@ -418,26 +274,7 @@
 				"type": "uint256"
 			}
 		],
-		"name": "RoundEnded",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "room",
-				"type": "address"
-			},
-			{
-				"indexed": true,
-				"internalType": "uint256",
-				"name": "nextRound",
-				"type": "uint256"
-			}
-		],
-		"name": "RoundPrepared",
+		"name": "RoundRestarted",
 		"type": "event"
 	},
 	{
@@ -453,6 +290,12 @@
 				"indexed": true,
 				"internalType": "uint256",
 				"name": "round",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "startAt",
 				"type": "uint256"
 			}
 		],
@@ -472,6 +315,24 @@
 				"indexed": true,
 				"internalType": "uint256",
 				"name": "round",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "stopAt",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "totalVoter",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "totalGolput",
 				"type": "uint256"
 			}
 		],
@@ -503,12 +364,6 @@
 				"indexed": false,
 				"internalType": "uint256",
 				"name": "candidateId",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "weight",
 				"type": "uint256"
 			},
 			{
@@ -573,6 +428,19 @@
 		"type": "function"
 	},
 	{
+		"inputs": [],
+		"name": "activeRoundStartAt",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
 		"inputs": [
 			{
 				"internalType": "uint256",
@@ -593,6 +461,24 @@
 	{
 		"inputs": [
 			{
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "string[]",
+				"name": "names",
+				"type": "string[]"
+			}
+		],
+		"name": "addCandidates",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
 				"internalType": "address",
 				"name": "voter",
 				"type": "address"
@@ -606,181 +492,14 @@
 	{
 		"inputs": [
 			{
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "credit",
-				"type": "uint256"
-			}
-		],
-		"name": "addVoterWithCredit",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "availableCreditsPool",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256[]",
-				"name": "candidateIds",
-				"type": "uint256[]"
-			},
-			{
-				"internalType": "string[]",
-				"name": "names",
-				"type": "string[]"
-			}
-		],
-		"name": "batchAddCandidates",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
 				"internalType": "address[]",
 				"name": "voters",
 				"type": "address[]"
 			}
 		],
-		"name": "batchAddVoters",
+		"name": "addVoters",
 		"outputs": [],
 		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address[]",
-				"name": "voters",
-				"type": "address[]"
-			},
-			{
-				"internalType": "uint256[]",
-				"name": "credits",
-				"type": "uint256[]"
-			}
-		],
-		"name": "batchAddVotersWithCredits",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address[]",
-				"name": "voters",
-				"type": "address[]"
-			},
-			{
-				"internalType": "uint256[]",
-				"name": "amounts",
-				"type": "uint256[]"
-			}
-		],
-		"name": "batchGrantCredits",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256[]",
-				"name": "candidateIds",
-				"type": "uint256[]"
-			}
-		],
-		"name": "batchRemoveCandidates",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address[]",
-				"name": "voters",
-				"type": "address[]"
-			}
-		],
-		"name": "batchRemoveVoters",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "burnPoolCredits",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "calculateCreditAllocation",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "fromPool",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "newCredits",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "canPoolCover",
-		"outputs": [
-			{
-				"internalType": "bool",
-				"name": "canCover",
-				"type": "bool"
-			}
-		],
-		"stateMutability": "view",
 		"type": "function"
 	},
 	{
@@ -804,51 +523,6 @@
 	},
 	{
 		"inputs": [],
-		"name": "candidateRegistryVersion",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "candidateId",
-				"type": "uint256"
-			}
-		],
-		"name": "candidateVersion",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "version",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "winnerId",
-				"type": "uint256"
-			}
-		],
-		"name": "closeRound",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
 		"name": "currentRound",
 		"outputs": [
 			{
@@ -862,18 +536,11 @@
 	},
 	{
 		"inputs": [],
-		"name": "endVoting",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getCreditUtilization",
+		"name": "getCandidateCount",
 		"outputs": [
 			{
 				"internalType": "uint256",
-				"name": "utilization",
+				"name": "",
 				"type": "uint256"
 			}
 		],
@@ -882,26 +549,44 @@
 	},
 	{
 		"inputs": [],
-		"name": "getPoolStatus",
+		"name": "getCandidates",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "string[]",
+				"name": "names",
+				"type": "string[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getCurrentRoundStatus",
 		"outputs": [
 			{
 				"internalType": "uint256",
-				"name": "systemTotal",
+				"name": "roundId",
 				"type": "uint256"
 			},
 			{
-				"internalType": "uint256",
-				"name": "poolAvailable",
-				"type": "uint256"
+				"internalType": "enum VotingRoom.State",
+				"name": "roomState",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bool",
+				"name": "readyToStart",
+				"type": "bool"
 			},
 			{
 				"internalType": "uint256",
-				"name": "currentlyGranted",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "totalUsed",
+				"name": "startAt",
 				"type": "uint256"
 			}
 		],
@@ -916,44 +601,97 @@
 				"type": "uint256"
 			}
 		],
-		"name": "getRoundSummary",
+		"name": "getRoundHistory",
 		"outputs": [
 			{
-				"components": [
-					{
-						"internalType": "uint256",
-						"name": "winnerId",
-						"type": "uint256"
-					},
-					{
-						"internalType": "string",
-						"name": "winnerName",
-						"type": "string"
-					},
-					{
-						"internalType": "uint256",
-						"name": "winnerVoteCount",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "startAt",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "endAt",
-						"type": "uint256"
-					},
-					{
-						"internalType": "bool",
-						"name": "closed",
-						"type": "bool"
-					}
-				],
-				"internalType": "struct VotingRoom.RoundSummary",
+				"internalType": "address",
+				"name": "room",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "roundId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "address",
+				"name": "admin",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalVoter",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalGolput",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "startAt",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "stopAt",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
+			}
+		],
+		"name": "getRoundHistoryCandidates",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "string[]",
+				"name": "names",
+				"type": "string[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "voteCounts",
+				"type": "uint256[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getVoterCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
 				"name": "",
-				"type": "tuple"
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getVoters",
+		"outputs": [
+			{
+				"internalType": "address[]",
+				"name": "",
+				"type": "address[]"
 			}
 		],
 		"stateMutability": "view",
@@ -981,24 +719,6 @@
 			}
 		],
 		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "newAmount",
-				"type": "uint256"
-			}
-		],
-		"name": "grantCredit",
-		"outputs": [],
-		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
@@ -1132,27 +852,15 @@
 		"type": "function"
 	},
 	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "newCreditsNeeded",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "needed",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
+		"inputs": [],
+		"name": "removeAllCandidates",
+		"outputs": [],
+		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
 		"inputs": [],
-		"name": "prepareNextRound",
+		"name": "removeAllVoters",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
@@ -1185,7 +893,14 @@
 	},
 	{
 		"inputs": [],
-		"name": "resetRoom",
+		"name": "reset",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "restart",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
@@ -1224,37 +939,44 @@
 				"type": "uint256"
 			}
 		],
-		"name": "roundSummaries",
+		"name": "roundHistorySaved",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "saved",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "roundReadyToStart",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
+			}
+		],
+		"name": "roundTotalVotes",
 		"outputs": [
 			{
 				"internalType": "uint256",
-				"name": "winnerId",
+				"name": "totalVotes",
 				"type": "uint256"
-			},
-			{
-				"internalType": "string",
-				"name": "winnerName",
-				"type": "string"
-			},
-			{
-				"internalType": "uint256",
-				"name": "winnerVoteCount",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "startAt",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "endAt",
-				"type": "uint256"
-			},
-			{
-				"internalType": "bool",
-				"name": "closed",
-				"type": "bool"
 			}
 		],
 		"stateMutability": "view",
@@ -1312,7 +1034,7 @@
 	},
 	{
 		"inputs": [],
-		"name": "startVoting",
+		"name": "start",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
@@ -1332,48 +1054,9 @@
 	},
 	{
 		"inputs": [],
-		"name": "stopVoting",
+		"name": "stop",
 		"outputs": [],
 		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "totalCreditsGranted",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "totalCreditsInSystem",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "totalCreditsUsed",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
 		"type": "function"
 	},
 	{
@@ -1400,57 +1083,6 @@
 		"name": "vote",
 		"outputs": [],
 		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			}
-		],
-		"name": "voterCredit",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "credit",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "voterRegistryVersion",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "voter",
-				"type": "address"
-			}
-		],
-		"name": "voterVersion",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "version",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
 		"type": "function"
 	},
 	{
