@@ -571,7 +571,7 @@ export default function App() {
     );
 }
 
-function coerceArg(val) {
+function coerceScalar(val) {
     const v = String(val).trim();
 
     if (v === "true") return true;
@@ -584,13 +584,50 @@ function coerceArg(val) {
     return v;
 }
 
+function normalizeArrayValue(value) {
+    if (Array.isArray(value)) {
+        return value.map((item) => normalizeArrayValue(item));
+    }
+
+    if (typeof value === "string") {
+        return coerceScalar(value);
+    }
+
+    if (typeof value === "number") {
+        return BigInt(value);
+    }
+
+    return value;
+}
+
+function coerceArgByType(val, type) {
+    const v = String(val).trim();
+
+    if (type.endsWith("[]")) {
+        let parsed;
+        try {
+            parsed = JSON.parse(v);
+        } catch {
+            throw new Error(`Format array untuk ${type} harus JSON valid, contoh: [1,2] atau ["andi","budi"]`);
+        }
+
+        if (!Array.isArray(parsed)) {
+            throw new Error(`Value "${v}" is not a valid array.`);
+        }
+
+        return parsed.map((item) => normalizeArrayValue(item));
+    }
+
+    return coerceScalar(v);
+}
+
 function buildArgs(fn, args) {
     return (fn.inputs || []).map((inp, idx) => {
         const raw = args?.[idx] ?? "";
         if (String(raw).trim() === "") {
             throw new Error(`Input ${inp.name || `arg${idx}`} (${inp.type}) wajib diisi`);
         }
-        return coerceArg(raw);
+        return coerceArgByType(raw, inp.type);
     });
 }
 

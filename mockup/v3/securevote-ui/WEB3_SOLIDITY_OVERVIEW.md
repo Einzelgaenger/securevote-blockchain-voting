@@ -1,831 +1,430 @@
-# SecureVote Web3 Solidity Overview
+# WEB3 / SOLIDITY OVERVIEW
 
-Dokumen ini menjelaskan kontrak Solidity yang dipakai oleh UI `securevote-ui`.
+Dokumen ini menjelaskan cara kerja sistem voting yang saat ini dipakai oleh `mockup/v3/securevote-ui`, dengan fokus pada alur operasional dari membuat room sampai voting selesai.
 
-Kontrak utama:
+Dokumen ini menggantikan versi lama di:
+
+- `(outdated)-WEB3_SOLIDITY_OVERVIEW.md`
+
+## Kontrak yang Dipakai
+
+Sistem saat ini memakai 4 komponen utama:
 
 1. `RoomFactory`
+   Dipakai untuk membuat room voting baru.
+
 2. `VotingRoom`
+   Logic utama room voting. Room yang dipakai user adalah clone/instance hasil `createRoom()`, bukan implementation.
+
 3. `SponsorVault`
+   Menyimpan registration fee, deposit room, dan membayar relayer untuk gasless vote.
+
 4. `MinimalForwarder`
+   Dipakai untuk meta-transaction saat voter melakukan gasless vote.
 
-UI membaca ABI dari:
+## Prinsip Penting
 
-```text
-frontend/src/abi/RoomFactory.json
-frontend/src/abi/VotingRoom.json
-frontend/src/abi/SponsorVault.json
-frontend/src/abi/MinimalForwarder.json
-```
+Beberapa prinsip penting pada versi sistem saat ini:
 
-Source Solidity berada di:
+- Satu room hanya punya satu admin.
+- Satu voter hanya bisa vote satu kali per round.
+- Voting hanya bisa berjalan saat room berada pada state `Active`.
+- Voter dan kandidat hanya bisa diatur saat room `Inactive`.
+- Histori hasil round disimpan saat admin memanggil `stop()`.
+- Gasless vote hanya dipakai untuk `vote(uint256)`, bukan untuk fungsi admin.
+- `VotingRoom` di `frontend/src/config/contracts.js` adalah implementation/template, bukan room yang dipakai voting langsung.
 
-```text
-contracts/v2/RoomFactory.sol
-contracts/v2/VotingRoom.sol
-contracts/v2/SponsorVault.sol
-contracts/v2/MinimalForwarder.sol
-```
+## Ringkasan State Room
 
-## 1. RoomFactory
+State room saat ini sederhana:
 
-`RoomFactory` bertugas membuat room voting baru. Room yang dibuat adalah clone dari `VotingRoom` implementation menggunakan pola EIP-1167 minimal proxy.
+- `Inactive`
+  Room belum mulai voting atau sudah dihentikan.
 
-### Variables
+- `Active`
+  Voting sedang berjalan dan voter bisa memanggil `vote()`.
 
-```solidity
-address public immutable votingRoomImplementation;
-```
+Selain state, ada flag `roundReadyToStart`:
 
-Alamat contract logic/template `VotingRoom`. Ini bukan room voting asli, hanya implementation.
+- `true`: round siap dimulai lewat `start()`
+- `false`: round sebelumnya sudah selesai dan admin harus pilih `restart()` atau `reset()` dulu sebelum mulai lagi
 
-```solidity
-address public immutable sponsorVault;
-```
+## Kasus End-to-End: Dari Buat Room Sampai Voting Selesai
 
-Alamat contract `SponsorVault`.
+Di bawah ini contoh kasus operasional yang sesuai dengan flow sistem saat ini.
 
-```solidity
-address public immutable trustedForwarder;
-```
-
-Alamat contract `MinimalForwarder` untuk gasless transaction.
-
-```solidity
-mapping(address room => address admin) public roomOwner;
-```
-
-Mapping dari address room ke admin room.
-
-```solidity
-mapping(address room => bool valid) public isRoom;
-```
-
-Menandai apakah sebuah address adalah room valid yang dibuat oleh factory.
-
-```solidity
-address[] public allRooms;
-```
-
-Array semua room yang pernah dibuat.
-
-Karena variable ini `public`, Solidity otomatis membuat getter:
-
-```solidity
-roomOwner(address room)
-isRoom(address room)
-allRooms(uint256 index)
-```
-
-Catatan: `allRooms` perlu input index. Contoh: `allRooms(0)`.
-
-### Functions
-
-```solidity
-createRoom(string calldata roomName) external payable returns (address room)
-```
-
-Membuat voting room baru.
-
-Alur:
-
-1. Cek registration fee dari `SponsorVault`.
-2. Clone `VotingRoom` implementation.
-3. Panggil `initialize()` pada room clone.
-4. Simpan `roomOwner`.
-5. Set `isRoom`.
-6. Push room ke `allRooms`.
-7. Kirim registration fee ke `SponsorVault`.
-
-```solidity
-getRoomCount() external view returns (uint256)
-```
-
-Mengembalikan jumlah room yang sudah dibuat.
-
-```solidity
-getRoomAt(uint256 index) external view returns (address)
-```
-
-Mengambil address room berdasarkan index.
-
-Jika `getRoomCount()` menghasilkan `3`, index valid adalah `0`, `1`, dan `2`.
-
-```solidity
-getRoomsByAdmin(address admin) external view returns (address[] memory)
-```
-
-Mengambil semua room yang dimiliki admin tertentu.
-
-```solidity
-getRoomsByVoter(address voter) external view returns (address[] memory rooms)
-```
-
-Mengambil room tempat voter tersebut eligible. Function ini melakukan loop ke semua room, sehingga kurang cocok untuk data besar.
-
-### Event
-
-```solidity
-event RoomRegistered(address indexed room, address indexed admin, uint256 feePaid, string name);
-```
-
-Dikeluarkan setelah room baru berhasil dibuat.
-
-## 2. VotingRoom
-
-`VotingRoom` adalah logic utama voting. Setiap room clone memiliki state sendiri: admin, voter, kandidat, round, credit, dan hasil vote.
-
-### Enum
-
-```solidity
-enum State { Inactive, Active, Paused, Ended, Closed }
-```
-
-Arti state:
-
-```text
-Inactive = setup / belum mulai
-Active   = voting sedang berjalan
-Paused   = voting dipause sementara
-Ended    = voting selesai, belum final close
-Closed   = round sudah ditutup
-```
-
-### Constant
-
-```solidity
-uint256 public constant MAX_BATCH_SIZE = 500;
-```
-
-Batas maksimal batch operation, misalnya upload 500 voter sekali transaksi.
-
-### Core Variables
-
-```solidity
-bool public initialized;
-```
-
-Menandakan clone room sudah di-initialize.
-
-```solidity
-address public roomAdmin;
-```
-
-Admin room.
-
-```solidity
-string public roomName;
-```
-
-Nama room voting.
-
-```solidity
-address public sponsorVault;
-```
-
-Alamat `SponsorVault`.
-
-```solidity
-State public state;
-```
-
-Status room saat ini.
-
-```solidity
-uint256 public currentRound;
-```
-
-Nomor round voting saat ini.
-
-```solidity
-uint256 public maxCostPerVoteWei;
-```
-
-Batas maksimal biaya gas per vote dalam wei. Dipakai untuk precheck gasless voting.
-
-### Voter Variables
-
-```solidity
-uint256 public voterRegistryVersion;
-mapping(address voter => uint256 version) public voterVersion;
-```
-
-Dipakai untuk mengecek apakah voter masih eligible. Voter eligible jika:
-
-```solidity
-voterVersion[voter] == voterRegistryVersion
-```
-
-```solidity
-mapping(address voter => uint256 credit) public voterCredit;
-```
-
-Credit voting milik voter. Bobot vote diambil dari nilai ini.
-
-```solidity
-mapping(address voter => uint256 round) public lastVotedRound;
-```
-
-Mencegah voter vote dua kali pada round yang sama.
-
-### Credit Pool Variables
-
-```solidity
-uint256 public totalCreditsInSystem;
-```
-
-Total credit yang pernah masuk ke sistem.
-
-```solidity
-uint256 public availableCreditsPool;
-```
-
-Credit yang tersedia untuk dipakai ulang.
-
-```solidity
-uint256 public totalCreditsGranted;
-```
-
-Total credit yang sedang diberikan ke voter aktif.
-
-```solidity
-uint256 public totalCreditsUsed;
-```
-
-Total credit yang sudah dipakai untuk vote.
-
-### Candidate Variables
-
-```solidity
-uint256 public candidateRegistryVersion;
-mapping(uint256 candidateId => uint256 version) public candidateVersion;
-```
-
-Dipakai untuk mengecek kandidat valid. Kandidat valid jika:
-
-```solidity
-candidateVersion[candidateId] == candidateRegistryVersion
-```
-
-```solidity
-mapping(uint256 candidateId => string name) public candidateName;
-```
-
-Nama kandidat berdasarkan ID.
-
-```solidity
-mapping(uint256 round => mapping(uint256 candidateId => uint256 votes)) public roundVotes;
-```
-
-Total vote per round dan kandidat.
+### 1. Admin membuat room baru
 
 Contoh:
 
-```text
-roundVotes[1][2] = total vote kandidat ID 2 di round 1
-```
+- Admin: `0xAdmin`
+- Nama room: `Pemilihan Ketua RT 2026`
 
-### Round Summary
+Langkah:
 
-```solidity
-struct RoundSummary {
-    uint256 winnerId;
-    string winnerName;
-    uint256 winnerVoteCount;
-    uint256 startAt;
-    uint256 endAt;
-    bool closed;
-}
-```
+1. Admin memanggil `RoomFactory.createRoom("Pemilihan Ketua RT 2026")`.
+2. Admin wajib mengirim ETH minimal sebesar `registrationFeeWei`.
+3. `RoomFactory` membuat clone baru dari `VotingRoom` implementation.
+4. Clone room di-`initialize()` dengan:
+   - `roomAdmin = 0xAdmin`
+   - `roomName = "Pemilihan Ketua RT 2026"`
+   - `sponsorVault = address SponsorVault`
+   - `trustedForwarder = address MinimalForwarder`
+5. Address room baru disimpan di `roomOwner`, `isRoom`, dan `allRooms`.
+6. Registration fee diteruskan ke `SponsorVault`.
 
-```solidity
-mapping(uint256 round => RoundSummary) public roundSummaries;
-```
+Hasil:
 
-Menyimpan hasil akhir setiap round. `winnerId` tetap dipilih manual saat `closeRound(winnerId)`, sedangkan `winnerVoteCount` diambil dari `roundVotes[currentRound][winnerId]`.
+- Terbentuk satu room instance baru, misalnya `0xRoomA`.
+- Room awal berada di kondisi:
+  - `state = Inactive`
+  - `currentRound = 1`
+  - `roundReadyToStart = true`
 
-### Admin Functions
+Catatan penting:
 
-```solidity
-initialize(address _roomAdmin, string calldata _roomName, address _sponsorVault, address _trustedForwarder)
-```
+- Address `0xRoomA` inilah yang harus dipakai untuk `start`, `vote`, `stop`, `restart`, dan `reset`.
+- Jangan memakai address implementation `VotingRoom` di config untuk voting langsung.
 
-Dipanggil sekali saat clone room dibuat.
+### 2. Admin menyiapkan daftar voter
 
-```solidity
-setMaxCostPerVote(uint256 newCost)
-```
+Sebelum voting dimulai, admin mendaftarkan voter ke room clone, misalnya:
 
-Admin mengatur batas biaya gasless vote.
+- `0xVoter1`
+- `0xVoter2`
+- `0xVoter3`
 
-```solidity
-addVoter(address voter)
-```
+Fungsi yang bisa dipakai:
 
-Menambahkan voter. Tidak bisa dipanggil saat state `Active`.
+- `addVoter(address voter)`
+- `addVoters(address[] voters)`
 
-```solidity
-removeVoter(address voter)
-```
+Aturan:
 
-Menghapus voter. Jika voter punya credit, credit dikembalikan ke pool.
+- Hanya admin room yang boleh menambah voter.
+- Hanya boleh dilakukan saat `Inactive`.
+- Voter duplikat akan gagal karena ada validasi `DuplicateVoter`.
 
-```solidity
-grantCredit(address voter, uint256 newAmount)
-```
+Hasil:
 
-Set credit voter. Ini mengganti nilai credit, bukan menambah.
+- Address voter masuk ke `voterRegistry`
+- Address voter masuk ke `voterList`
 
-Contoh:
+### 3. Admin menyiapkan kandidat
 
-```text
-credit lama = 10
-grantCredit(voter, 7)
-credit baru = 7
-sisa 3 masuk pool
-```
+Contoh kandidat:
 
-```solidity
-burnPoolCredits(uint256 amount)
-```
+- ID `1` = `Andi`
+- ID `2` = `Budi`
 
-Menghapus credit dari pool secara permanen.
+Fungsi yang bisa dipakai:
 
-```solidity
-addCandidate(uint256 candidateId, string calldata name)
-```
+- `addCandidate(uint256 candidateId, string name)`
+- `addCandidates(uint256[] ids, string[] names)`
 
-Menambahkan kandidat.
+Aturan:
 
-```solidity
-removeCandidate(uint256 candidateId)
-```
+- Hanya admin room yang boleh menambah kandidat.
+- Hanya boleh dilakukan saat `Inactive`.
+- ID kandidat tidak boleh duplikat.
 
-Menghapus kandidat dari registry aktif.
+Hasil:
 
-### Batch Functions
+- Kandidat masuk ke `candidateRegistry`
+- Nama kandidat tersimpan di `candidateName`
+- ID kandidat masuk ke `candidateIds`
 
-```solidity
-batchAddVoters(address[] calldata voters)
-```
+### 4. Admin menyiapkan deposit untuk gasless vote
 
-Tambah banyak voter dalam satu transaksi.
+Langkah ini dibutuhkan jika room ingin mendukung gasless vote.
 
-```solidity
-batchGrantCredits(address[] calldata voters, uint256[] calldata amounts)
-```
+Langkah:
 
-Set credit banyak voter dalam satu transaksi.
+1. Admin melakukan `SponsorVault.topup(roomAddress)` dengan mengirim ETH.
+2. Saldo deposit room akan tercatat di `roomBalance[room]`.
+3. Admin bisa mengatur batas biaya vote dengan `VotingRoom.setMaxCostPerVote(uint256 newCost)` saat room masih `Inactive`.
 
-```solidity
-batchAddVotersWithCredits(address[] calldata voters, uint256[] calldata credits)
-```
+Hubungannya dengan relayer:
 
-Tambah voter sekaligus set credit. Cocok untuk upload data dari Excel.
+- Saat relayer memproses gasless vote, relayer akan mengecek:
+  - room balance cukup
+  - `maxCostPerVoteWei` memadai
+- Setelah vote sukses, relayer akan meminta reimbursement ke `SponsorVault.settleAndWithdraw(...)`
 
-```solidity
-batchAddCandidates(uint256[] calldata candidateIds, string[] calldata names)
-```
+Kalau hanya ingin direct vote biasa:
 
-Tambah banyak kandidat.
+- Deposit room tidak wajib.
+- Voter membayar gas sendiri dari wallet mereka.
 
-```solidity
-batchRemoveVoters(address[] calldata voters)
-```
+### 5. Admin memulai voting
 
-Hapus banyak voter dan kembalikan credit mereka ke pool.
+Setelah voter dan kandidat siap, admin memanggil:
 
-```solidity
-batchRemoveCandidates(uint256[] calldata candidateIds)
-```
+- `VotingRoom.start()`
 
-Hapus banyak kandidat.
+Syarat:
 
-### Voting Lifecycle Functions
-
-```solidity
-startVoting()
-```
-
-Mulai voting. State berubah dari `Inactive` ke `Active`.
-
-```solidity
-stopVoting()
-```
-
-Pause voting. State berubah dari `Active` ke `Paused`. Setelah paused, admin hanya bisa resume dengan `startVoting()` atau finish dengan `endVoting()`. Tidak bisa langsung `closeRound()`.
-
-```solidity
-endVoting()
-```
-
-Mengakhiri voting dan menyimpan timestamp akhir. Function ini bisa dipanggil dari state `Active` atau `Paused`.
-
-```solidity
-closeRound(uint256 winnerId)
-```
-
-Menutup round dan menyimpan pemenang.
-
-```solidity
-resetRoom()
-```
-
-Reset room setelah state `Closed`. Registry voter/kandidat dan credit counter di-reset.
-
-```solidity
-prepareNextRound()
-```
-
-Menyiapkan round berikutnya tanpa menghapus voter, kandidat, dan credit.
-
-### Voting Function
-
-```solidity
-vote(uint256 candidateId)
-```
-
-Voter memilih kandidat.
-
-Validasi:
-
-1. State harus `Active`.
-2. Voter eligible.
-3. Voter belum vote di round ini.
-4. Kandidat valid.
-5. Voter punya credit.
+- Room harus `Inactive`
+- `roundReadyToStart == true`
+- Minimal ada 1 voter
+- Minimal ada 1 kandidat
 
 Efek:
 
-1. Semua credit voter menjadi bobot vote.
-2. Credit voter menjadi `0`.
-3. Vote kandidat bertambah.
-4. `lastVotedRound` diupdate.
-5. Emit `VoteCast`.
+- `state` berubah menjadi `Active`
+- `activeRoundStartAt` diset ke timestamp saat itu
+- Event `RoundStarted` dipancarkan
 
-### View Functions
+Hasil bisnis:
 
-```solidity
-getVotes(uint256 round, uint256 candidateId) external view returns (uint256)
-```
+- Round 1 resmi dimulai
+- Voter sudah boleh memberikan suara
 
-Ambil total vote kandidat pada round tertentu.
+### 6. Voter melakukan voting
 
-```solidity
-getRoundSummary(uint256 round) external view returns (RoundSummary memory)
-```
+Saat room `Active`, voter memilih kandidat dengan:
 
-Ambil summary round.
-
-```solidity
-isVoterEligible(address voter) external view returns (bool)
-```
-
-Cek apakah voter eligible.
-
-```solidity
-isCandidateValid(uint256 candidateId) external view returns (bool)
-```
-
-Cek apakah kandidat valid.
-
-```solidity
-getPoolStatus() external view returns (uint256 systemTotal, uint256 poolAvailable, uint256 currentlyGranted, uint256 totalUsed)
-```
-
-Melihat status credit pool.
-
-```solidity
-canPoolCover(uint256 amount) external view returns (bool)
-```
-
-Cek apakah pool cukup untuk cover jumlah credit tertentu.
-
-```solidity
-calculateCreditAllocation(uint256 amount) external view returns (uint256 fromPool, uint256 newCredits)
-```
-
-Simulasi alokasi credit: berapa dari pool dan berapa credit baru.
-
-```solidity
-newCreditsNeeded(uint256 amount) external view returns (uint256)
-```
-
-Cek credit baru yang dibutuhkan di luar pool.
-
-```solidity
-getCreditUtilization() external view returns (uint256)
-```
-
-Mengembalikan persentase credit yang sedang digunakan.
-
-### Deposit Function
-
-```solidity
-withdrawDeposit(uint256 amount)
-```
-
-Admin menarik deposit room dari `SponsorVault`. Tidak bisa saat room sedang `Active`.
-
-## 3. SponsorVault
-
-`SponsorVault` menyimpan ETH untuk deposit room, reimbursement relayer, registration fee, dan platform fee.
-
-### Variables
-
-```solidity
-mapping(address room => uint256 balance) public roomBalance;
-```
-
-Saldo deposit ETH tiap room.
-
-```solidity
-mapping(bytes32 actionId => bool settled) public settled;
-```
-
-Menandai action vote sudah dibayar ke relayer agar tidak bisa double settlement.
-
-```solidity
-mapping(address relayer => bool allowed) public isRelayer;
-```
-
-Allowlist relayer.
-
-```solidity
-uint256 public overheadBps;
-```
-
-Tambahan biaya relayer dalam basis point.
+- `vote(candidateId)`
 
 Contoh:
 
-```text
-1000  = 10%
-500   = 5%
-10000 = 100%
-```
+- `0xVoter1` memilih kandidat `1`
+- `0xVoter2` memilih kandidat `2`
+- `0xVoter3` memilih kandidat `1`
 
-```solidity
-uint256 public registrationFeeWei;
-```
+Validasi saat `vote()`:
 
-Fee pembuatan room.
+1. Caller harus voter terdaftar.
+2. Caller belum pernah vote di round yang sama.
+3. Kandidat yang dipilih harus valid.
+4. Room harus sedang `Active`.
 
-```solidity
-uint256 public platformFeeBps;
-```
+Efek on-chain:
 
-Fee platform saat withdraw deposit.
+- `roundVotes[currentRound][candidateId] += 1`
+- `roundTotalVotes[currentRound] += 1`
+- `lastVotedRound[voter] = currentRound`
+- Event `VoteCast` dipancarkan
 
-```solidity
-uint256 public platformFeeAccrued;
-```
+Karena sistem sekarang adalah one-voter-one-vote:
 
-Total platform fee yang sudah terkumpul.
+- Setiap voter hanya menambah 1 suara ke kandidat yang dipilih.
+- Tidak ada credit/bobot suara seperti versi lama.
 
-### Room Functions
+### 7. Dua mode voting: direct dan gasless
 
-```solidity
-topup(address room) external payable
-```
+#### Direct vote
 
-Menambah deposit ETH untuk room.
+Pada direct vote:
 
-```solidity
-withdraw(address room, uint256 amount) external
-```
+1. Voter memanggil `vote()` langsung dari wallet.
+2. Gas dibayar oleh voter.
+3. Contract tetap mencatat hasil vote dengan logic yang sama.
 
-Menarik deposit room. Hanya bisa dipanggil oleh contract room itu sendiri.
+#### Gasless vote
 
-### Settlement Function
+Pada gasless vote:
 
-```solidity
-settleAndWithdraw(address room, bytes32 actionId, uint256 chargedAmount)
-```
+1. Frontend membuat data call `vote(candidateId)`.
+2. Frontend membaca nonce dari `MinimalForwarder`.
+3. Voter menandatangani EIP-712 `ForwardRequest`.
+4. Frontend mengirim request bertanda tangan ke relayer `/relay`.
+5. Relayer memverifikasi signature lewat `MinimalForwarder.verify(...)`.
+6. Relayer hanya mengizinkan meta-tx untuk fungsi `vote(uint256)`.
+7. Relayer melakukan pre-check:
+   - chain sesuai
+   - room balance cukup
+   - jika `maxCostPerVoteWei > 0`, balance room minimal `2x maxCostPerVoteWei`
+8. Relayer menjalankan `forwarder.execute(...)`.
+9. Jika vote sukses dan event `VoteCast` ditemukan, relayer mengambil `actionId`.
+10. Relayer memanggil `SponsorVault.settleAndWithdraw(room, actionId, chargedAmount)`.
+11. Deposit room berkurang, lalu relayer menerima reimbursement.
 
-Dipanggil relayer setelah vote berhasil. Vault mengurangi saldo room dan membayar relayer.
+Hasil:
 
-### Platform Admin Functions
+- Bagi contract `VotingRoom`, hasil akhirnya tetap sama dengan direct vote.
+- Perbedaannya hanya pada siapa yang membayar gas.
 
-```solidity
-setOverheadBps(uint256 newBps)
-```
+### 8. Admin menghentikan voting
 
-Owner update overhead relayer.
+Ketika periode voting selesai, admin memanggil:
 
-```solidity
-setRegistrationFee(uint256 newFee)
-```
+- `VotingRoom.stop()`
 
-Owner update registration fee.
+Syarat:
 
-```solidity
-setPlatformFeeBps(uint256 newBps)
-```
+- Room harus sedang `Active`
 
-Owner update platform fee.
+Efek penting:
 
-```solidity
-setRelayer(address relayer, bool allowed)
-```
+1. Timestamp berhenti disimpan ke `stopAt`.
+2. Jumlah voter diambil dari `voterList.length`.
+3. `totalGolput` dihitung sebagai:
+   `totalVoter - roundTotalVotes[currentRound]`
+4. Semua data kandidat dan jumlah suaranya untuk round aktif disalin ke `roundHistories[currentRound]`.
+5. `roundHistorySaved[currentRound] = true`
+6. `activeRoundStartAt = 0`
+7. `roundReadyToStart = false`
+8. `state` kembali menjadi `Inactive`
 
-Owner menambah atau menghapus relayer dari allowlist.
+Makna bisnis:
 
-```solidity
-withdrawPlatformFee(address to)
-```
+- Round dinyatakan selesai.
+- Hasil round sudah dibekukan ke histori.
+- Room belum bisa langsung `start()` lagi sampai admin memutuskan lanjut round baru atau reset.
 
-Owner menarik platform fee.
+### 9. Membaca hasil voting
 
-```solidity
-acceptRegistrationFee() external payable
-```
+Setelah `stop()`, hasil bisa dibaca lewat:
 
-Menerima registration fee dari `RoomFactory`.
+- `getRoundHistory(round)`
+- `getRoundHistoryCandidates(round)`
+- `getVotes(round, candidateId)`
 
-### Analytics Functions
+Contoh hasil round 1:
 
-```solidity
-getTotalBalance() external view returns (uint256)
-```
+- Total voter: `3`
+- Suara kandidat 1: `2`
+- Suara kandidat 2: `1`
+- Golput: `0`
 
-Total ETH yang ada di vault.
+Kalau hanya 2 dari 3 voter yang vote:
 
-```solidity
-getRoomBalances(address[] calldata rooms) external view returns (uint256[] memory)
-```
+- `roundTotalVotes[1] = 2`
+- `totalGolput = 1`
 
-Ambil saldo banyak room sekaligus.
+Catatan penting:
 
-```solidity
-getVaultStats() external view returns (uint256 totalLocked, uint256 platformFees, uint256 roomsDeposits)
-```
+- Contract tidak memilih pemenang secara otomatis.
+- Penentuan siapa pemenang dilakukan di level pembacaan hasil, berdasarkan kandidat dengan vote terbanyak.
 
-Ringkasan vault.
+### 10. Setelah voting selesai: pilih `restart()` atau `reset()`
 
-## 4. MinimalForwarder
+Setelah satu round dihentikan, ada dua pilihan:
 
-`MinimalForwarder` menjalankan gasless transaction. User menandatangani message, lalu relayer mengirim transaksi ke blockchain.
+#### Opsi A: `restart()`
 
-### Struct
+Pakai jika:
 
-```solidity
-struct ForwardRequest {
-    address from;
-    address to;
-    uint256 value;
-    uint256 gas;
-    uint256 nonce;
-    bytes data;
-}
-```
+- daftar voter tetap sama
+- daftar kandidat tetap sama
+- ingin membuka round baru dengan konfigurasi lama
 
-Arti field:
+Efek:
 
-```text
-from  = voter asli
-to    = contract tujuan, biasanya VotingRoom clone
-value = ETH yang dikirim, biasanya 0
-gas   = limit gas
-nonce = anti replay
-data  = encoded function call, misalnya vote(candidateId)
-```
+- `currentRound += 1`
+- `roundReadyToStart = true`
+- voter dan kandidat tidak dihapus
 
-### Variables
+Lalu admin bisa memanggil `start()` lagi untuk round berikutnya.
 
-```solidity
-bytes32 private constant TYPEHASH;
-```
+#### Opsi B: `reset()`
 
-Hash tipe EIP-712 untuk `ForwardRequest`.
+Pakai jika:
 
-```solidity
-mapping(address => uint256) private _nonces;
-```
+- ingin mengosongkan daftar voter
+- ingin mengosongkan daftar kandidat
+- ingin menyiapkan pemilihan baru dari nol
 
-Nonce per address agar signature tidak bisa dipakai ulang.
+Efek:
 
-### Functions
+- semua voter dihapus
+- semua kandidat dihapus
+- `currentRound += 1`
+- `roundReadyToStart = true`
 
-```solidity
-getNonce(address from) public view returns (uint256)
-```
+Setelah itu admin perlu input ulang voter dan kandidat sebelum memulai voting lagi.
 
-Ambil nonce user.
+## Contoh Skenario Lengkap
 
-```solidity
-verify(ForwardRequest calldata req, bytes calldata signature) public view returns (bool)
-```
+Berikut contoh ringkas satu siklus penuh:
 
-Cek apakah signature valid dan dibuat oleh `req.from`.
+1. Admin membuat room `Pemilihan Ketua RT 2026` lewat `createRoom()`.
+2. Factory menghasilkan room clone `0xRoomA`.
+3. Admin top up deposit ke `SponsorVault` untuk mendukung gasless vote.
+4. Admin set `maxCostPerVoteWei`.
+5. Admin menambahkan 3 voter.
+6. Admin menambahkan 2 kandidat.
+7. Admin memanggil `start()`.
+8. `Voter1` melakukan gasless vote ke kandidat 1.
+9. `Voter2` melakukan direct vote ke kandidat 2.
+10. `Voter3` melakukan gasless vote ke kandidat 1.
+11. Admin memanggil `stop()`.
+12. Histori round 1 tersimpan.
+13. Hasil akhir round 1:
+    - kandidat 1 = 2 suara
+    - kandidat 2 = 1 suara
+    - golput = 0
+14. Admin memutuskan:
+    - `restart()` jika mau lanjut round 2 dengan peserta/kandidat yang sama
+    - `reset()` jika mau buat pemilihan baru dari nol
 
-```solidity
-execute(ForwardRequest calldata req, bytes calldata signature) public payable returns (bool success, bytes memory returnData)
-```
+## Peran Tiap Komponen
 
-Menjalankan meta-transaction.
+### RoomFactory
 
-Alur:
+Tugas:
 
-1. Verify signature.
-2. Naikkan nonce.
-3. Append address `from` ke calldata.
-4. Call contract tujuan.
-5. Jika gagal, revert dengan reason asli.
+- membuat room clone baru
+- menetapkan admin room
+- menyimpan daftar room valid
+- meneruskan registration fee ke vault
 
-## Alur Besar Aplikasi
+### VotingRoom
 
-### 1. Admin Membuat Room
+Tugas:
 
-```text
-RoomFactory.createRoom(roomName)
-```
+- menyimpan voter dan kandidat
+- mengatur start/stop round
+- menerima vote
+- menyimpan histori hasil round
+- menjadi titik validasi utama logic voting
 
-Factory membuat clone `VotingRoom`, lalu mengirim registration fee ke `SponsorVault`.
+### SponsorVault
 
-### 2. Admin Setup Room
+Tugas:
 
-Admin biasanya menjalankan:
+- menerima registration fee
+- menyimpan deposit ETH per room
+- membayar relayer setelah gasless vote berhasil
+- memproses withdraw deposit oleh room saat tidak aktif
 
-```text
-VotingRoom.addVoter()
-VotingRoom.grantCredit()
-VotingRoom.addCandidate()
-SponsorVault.topup()
-VotingRoom.setMaxCostPerVote()
-```
+### MinimalForwarder + Relayer
 
-### 3. Admin Mulai Voting
+Tugas:
 
-```text
-VotingRoom.startVoting()
-```
+- memfasilitasi vote tanpa voter membayar gas langsung
+- memverifikasi signature meta-tx
+- mengeksekusi `vote()` atas nama voter
+- menagih reimbursement ke vault
 
-State berubah menjadi `Active`.
+## Batasan Sistem Saat Ini
 
-### 4. Voter Vote Gasless
+Beberapa batasan penting pada implementasi saat ini:
 
-Alur gasless:
+- Vote berbobot/credit tidak dipakai lagi.
+- Pemenang tidak ditentukan otomatis oleh contract.
+- Gasless hanya untuk `vote()`, bukan operasi admin.
+- `getRoomsByVoter()` di factory melakukan loop semua room, jadi kurang cocok untuk skala besar.
+- Histori round disimpan saat `stop()`, jadi kalau round belum dihentikan maka hasil final round belum dibekukan ke histori.
 
-```text
-Frontend signTypedData
-Relayer menerima signature
-Relayer call MinimalForwarder.execute()
-MinimalForwarder call VotingRoom.vote()
-Relayer call SponsorVault.settleAndWithdraw()
-```
+## Kesimpulan
 
-Voter tidak membayar gas langsung. Gas dibayar relayer, lalu relayer diganti dari deposit room di `SponsorVault`.
+Secara operasional, flow sistem saat ini adalah:
 
-### 5. Admin Mengakhiri Voting
+1. Buat room lewat `RoomFactory`
+2. Simpan address room clone
+3. Setup voter dan kandidat di `VotingRoom`
+4. Top up deposit jika ingin gasless vote
+5. Mulai voting dengan `start()`
+6. Voter melakukan `vote()` secara direct atau gasless
+7. Akhiri voting dengan `stop()`
+8. Baca histori hasil round
+9. Lanjut dengan `restart()` atau `reset()`
 
-```text
-VotingRoom.endVoting()
-VotingRoom.closeRound(winnerId)
-```
+Kalau diinginkan, dokumen ini bisa saya lanjutkan jadi versi yang lebih teknis juga, misalnya ditambah:
 
-### 6. Lanjut Round atau Reset
-
-Untuk lanjut round dengan voter/kandidat/credit tetap:
-
-```text
-VotingRoom.prepareNextRound()
-```
-
-Untuk reset total:
-
-```text
-VotingRoom.resetRoom()
-```
-
-## Catatan UI
-
-Pada UI `securevote-ui`, setiap public variable akan muncul seperti function read.
-
-Contoh:
-
-```solidity
-address[] public allRooms;
-```
-
-akan muncul sebagai:
-
-```text
-allRooms(uint256)
-```
-
-Jadi input index wajib diisi.
-
-Contoh:
-
-```text
-allRooms(0)
-```
-
-Untuk mengetahui index yang valid, panggil:
-
-```text
-getRoomCount()
-```
-
-Jika hasilnya `3`, index valid adalah `0`, `1`, dan `2`.
+- sequence diagram per aktor
+- mapping tombol UI ke function contract
+- contoh call function per langkah
+- tabel state transition room
