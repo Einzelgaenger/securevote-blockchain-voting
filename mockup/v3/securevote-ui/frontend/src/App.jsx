@@ -124,6 +124,7 @@ export default function App() {
     const publicClient = usePublicClient();
     const { data: walletClient } = useWalletClient();
 
+    const [mode, setMode] = useState("dashboard");
     const [selected, setSelected] = useState("RoomFactory");
     const [customRoomAddr, setCustomRoomAddr] = useState("");
     const [resultLog, setResultLog] = useState([]);
@@ -143,6 +144,65 @@ export default function App() {
     const readFns = abiItems.filter(isReadFn);
     const writeFns = abiItems.filter(isWriteFn);
 
+    return (
+        <>
+            <div className="modeBar">
+                <button className={`pill ${mode === "dashboard" ? "active" : ""}`} onClick={() => setMode("dashboard")}>
+                    Public Audit Dashboard
+                </button>
+                <button className={`pill ${mode === "console" ? "active" : ""}`} onClick={() => setMode("console")}>
+                    Contract Console
+                </button>
+            </div>
+
+            {mode === "dashboard" ? (
+                <PublicAuditDashboard publicClient={publicClient} />
+            ) : !isConnected ? (
+                <div className="card">
+                    <div className="cardTitle">Connect Wallet</div>
+                    <div className="cardBody">
+                        Klik tombol connect di kanan atas untuk transaksi admin/voter.
+                        <div className="hint">Dashboard public tetap bisa dibuka tanpa wallet.</div>
+                    </div>
+                </div>
+            ) : (
+                <ContractConsole
+                    address={address}
+                    chain={chain}
+                    publicClient={publicClient}
+                    walletClient={walletClient}
+                    selected={selected}
+                    setSelected={setSelected}
+                    customRoomAddr={customRoomAddr}
+                    setCustomRoomAddr={setCustomRoomAddr}
+                    resultLog={resultLog}
+                    setResultLog={setResultLog}
+                    contract={contract}
+                    effectiveAddress={effectiveAddress}
+                    readFns={readFns}
+                    writeFns={writeFns}
+                />
+            )}
+        </>
+    );
+}
+
+function ContractConsole({
+    address,
+    chain,
+    publicClient,
+    walletClient,
+    selected,
+    setSelected,
+    customRoomAddr,
+    setCustomRoomAddr,
+    resultLog,
+    setResultLog,
+    contract,
+    effectiveAddress,
+    readFns,
+    writeFns,
+}) {
     function pushLog(line) {
         setResultLog((prev) => [line, ...prev].slice(0, 120));
     }
@@ -213,18 +273,6 @@ export default function App() {
         } catch (error) {
             pushLog(`[ERROR][TX] ${fn.name}: ${error.shortMessage || error.message}`);
         }
-    }
-
-    if (!isConnected) {
-        return (
-            <div className="card">
-                <div className="cardTitle">Connect Wallet</div>
-                <div className="cardBody">
-                    Klik tombol connect di kanan atas.
-                    <div className="hint">Setelah connect, pilih kontrak v2 dan panggil fungsi yang dibutuhkan.</div>
-                </div>
-            </div>
-        );
     }
 
     return (
@@ -346,6 +394,289 @@ export default function App() {
             </div>
         </div>
     );
+}
+
+function PublicAuditDashboard({ publicClient }) {
+    const [rooms, setRooms] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [error, setError] = useState("");
+
+    async function refreshDashboard() {
+        try {
+            if (!publicClient) throw new Error("Public client not ready");
+            setLoading(true);
+            setError("");
+
+            const roomCount = await publicClient.readContract({
+                address: CONTRACTS.RoomFactory.address,
+                abi: CONTRACTS.RoomFactory.abi,
+                functionName: "getRoomCount",
+            });
+
+            const roomAddresses = await Promise.all(
+                Array.from({ length: Number(roomCount) }, (_, index) =>
+                    publicClient.readContract({
+                        address: CONTRACTS.RoomFactory.address,
+                        abi: CONTRACTS.RoomFactory.abi,
+                        functionName: "getRoomAt",
+                        args: [BigInt(index)],
+                    })
+                )
+            );
+
+            const roomRows = await Promise.all(
+                roomAddresses.map(async (roomAddress) => {
+                    const [admin, name, voterCount, status, versionCount] = await Promise.all([
+                        safeRead(publicClient, CONTRACTS.RoomFactory.address, CONTRACTS.RoomFactory.abi, "roomOwner", [roomAddress]),
+                        safeRead(publicClient, roomAddress, CONTRACTS.VotingRoom.abi, "roomName", []),
+                        safeRead(publicClient, roomAddress, CONTRACTS.VotingRoom.abi, "getVoterCount", []),
+                        safeRead(publicClient, roomAddress, CONTRACTS.VotingRoom.abi, "getCurrentRoundStatus", []),
+                        safeRead(publicClient, CONTRACTS.VotingResultCenter.address, CONTRACTS.VotingResultCenter.abi, "getRoomVersionCount", [roomAddress]),
+                    ]);
+
+                    const versions = await loadRoomVersions(publicClient, roomAddress, Number(versionCount || 0n));
+
+                    return {
+                        room: roomAddress,
+                        admin: admin || "0x0000000000000000000000000000000000000000",
+                        name: name || "(name unavailable)",
+                        voterCount: voterCount ?? 0n,
+                        status,
+                        versionCount: versionCount ?? 0n,
+                        versions,
+                    };
+                })
+            );
+
+            setRooms(roomRows);
+            setLastUpdated(new Date());
+        } catch (err) {
+            setError(err.shortMessage || err.message || "Failed to load dashboard");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        refreshDashboard();
+        const timer = window.setInterval(refreshDashboard, 15000);
+        return () => window.clearInterval(timer);
+    }, [publicClient]);
+
+    const totalVersions = rooms.reduce((sum, room) => sum + Number(room.versionCount || 0n), 0);
+    const totalVoters = rooms.reduce((sum, room) => sum + Number(room.voterCount || 0n), 0);
+
+    return (
+        <div className="dashboard">
+            <div className="dashboardHeader">
+                <div>
+                    <div className="panelTitle">Public Audit Dashboard</div>
+                    <div className="hint">
+                        Menampilkan semua room dari RoomFactory. Hasil round diambil hanya dari data confirmed di VotingResultCenter.
+                    </div>
+                </div>
+                <button className="btn action refreshBtn" onClick={refreshDashboard} disabled={loading}>
+                    {loading ? "Refreshing..." : "Refresh"}
+                </button>
+            </div>
+
+            {error && <div className="errorBox">{error}</div>}
+
+            <div className="statGrid">
+                <StatCard label="Rooms" value={rooms.length} />
+                <StatCard label="Total Voters" value={totalVoters} />
+                <StatCard label="Submitted Versions" value={totalVersions} />
+                <StatCard label="Last Updated" value={lastUpdated ? lastUpdated.toLocaleTimeString() : "-"} />
+            </div>
+
+            {rooms.length === 0 && !loading ? (
+                <div className="emptyState">
+                    Belum ada room yang terdaftar di RoomFactory.
+                </div>
+            ) : (
+                <div className="roomList">
+                    {rooms.map((room) => (
+                        <RoomAuditCard key={room.room} room={room} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function StatCard({ label, value }) {
+    return (
+        <div className="statCard">
+            <div className="label">{label}</div>
+            <div className="statValue">{String(value)}</div>
+        </div>
+    );
+}
+
+function RoomAuditCard({ room }) {
+    const status = normalizeRoomStatus(room.status);
+
+    return (
+        <div className="auditRoom">
+            <div className="roomHeader">
+                <div>
+                    <div className="roomName">{room.name}</div>
+                    <div className="mono small">{room.room}</div>
+                </div>
+                <div className={`statusPill ${status.stateClass}`}>{status.stateLabel}</div>
+            </div>
+
+            <div className="roomFacts">
+                <div>
+                    <div className="label">Admin</div>
+                    <div className="mono small">{room.admin}</div>
+                </div>
+                <div>
+                    <div className="label">Voters</div>
+                    <div className="factValue">{String(room.voterCount)}</div>
+                </div>
+                <div>
+                    <div className="label">Current Round</div>
+                    <div className="factValue">{status.roundId}</div>
+                </div>
+                <div>
+                    <div className="label">Confirmed Versions</div>
+                    <div className="factValue">{String(room.versionCount)}</div>
+                </div>
+            </div>
+
+            <div className="sectionTitle">Confirmed Results</div>
+            {room.versions.length === 0 ? (
+                <div className="hint">Belum ada version hasil untuk room ini.</div>
+            ) : (
+                room.versions.map((version) => <RoundResult key={`${room.room}-${version.version}`} version={version} />)
+            )}
+        </div>
+    );
+}
+
+function RoundResult({ version }) {
+    const totalVotes = version.candidates.reduce((sum, item) => sum + Number(item.voteCount), 0);
+
+    return (
+        <div className="roundResult">
+            <div className="roundTitle">
+                <span>Round {version.roundId}</span>
+                <span>Version {version.version}</span>
+            </div>
+            <div className="resultMeta">
+                <span>Total voter: {version.totalVoter}</span>
+                <span>Votes: {totalVotes}</span>
+                <span>Golput: {version.totalGolput}</span>
+                <span>Submitted: {formatUnix(version.submittedAt)}</span>
+            </div>
+            <div className="mono small hashLine">{version.historyHash}</div>
+            <div className="candidateList">
+                {version.candidates.map((candidate) => (
+                    <div key={`${version.version}-${candidate.id}`} className="candidateRow">
+                        <span>{candidate.name}</span>
+                        <span className="mono">{candidate.voteCount}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+async function safeRead(publicClient, address, abi, functionName, args) {
+    try {
+        return await publicClient.readContract({
+            address,
+            abi,
+            functionName,
+            args,
+        });
+    } catch {
+        return null;
+    }
+}
+
+async function loadRoomVersions(publicClient, roomAddress, versionCount) {
+    const versions = [];
+
+    for (let version = 1; version <= versionCount; version += 1) {
+        const [summary, candidates] = await Promise.all([
+            safeRead(
+                publicClient,
+                CONTRACTS.VotingResultCenter.address,
+                CONTRACTS.VotingResultCenter.abi,
+                "getRoomVersionSummary",
+                [roomAddress, BigInt(version)]
+            ),
+            safeRead(
+                publicClient,
+                CONTRACTS.VotingResultCenter.address,
+                CONTRACTS.VotingResultCenter.abi,
+                "getRoomVersionCandidates",
+                [roomAddress, BigInt(version)]
+            ),
+        ]);
+
+        if (!summary || !candidates) continue;
+
+        versions.push({
+            version,
+            roundId: stringifyNumberish(summary[0]),
+            admin: summary[1],
+            totalVoter: stringifyNumberish(summary[2]),
+            totalGolput: stringifyNumberish(summary[3]),
+            startAt: stringifyNumberish(summary[4]),
+            stopAt: stringifyNumberish(summary[5]),
+            historyHash: summary[6],
+            submittedAt: stringifyNumberish(summary[7]),
+            candidates: candidates[0].map((id, index) => ({
+                id: stringifyNumberish(id),
+                name: candidates[1][index],
+                voteCount: stringifyNumberish(candidates[2][index]),
+            })),
+        });
+    }
+
+    return versions.reverse();
+}
+
+function normalizeRoomStatus(status) {
+    if (!status) {
+        return {
+            roundId: "-",
+            stateLabel: "Unknown",
+            stateClass: "unknown",
+        };
+    }
+
+    const roundId = stringifyNumberish(status[0]);
+    const state = Number(status[1]);
+    const readyToStart = Boolean(status[2]);
+
+    if (state === 1) {
+        return {
+            roundId,
+            stateLabel: "Active",
+            stateClass: "activeState",
+        };
+    }
+
+    return {
+        roundId,
+        stateLabel: readyToStart ? "Inactive / Ready" : "Inactive / Closed",
+        stateClass: readyToStart ? "readyState" : "closedState",
+    };
+}
+
+function stringifyNumberish(value) {
+    return typeof value === "bigint" ? value.toString() : String(value ?? "0");
+}
+
+function formatUnix(value) {
+    const seconds = Number(value);
+    if (!seconds) return "-";
+    return new Date(seconds * 1000).toLocaleString();
 }
 
 function coerceScalar(value) {
