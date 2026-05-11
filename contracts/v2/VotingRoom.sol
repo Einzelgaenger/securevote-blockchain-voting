@@ -8,6 +8,21 @@ interface ISponsorVault {
     function roomBalance(address room) external view returns (uint256);
 }
 
+interface IVotingResultCenter {
+    function submitRoundResult(
+        uint256 roundId,
+        address admin,
+        uint256 totalVoter,
+        uint256 totalGolput,
+        uint256 startAt,
+        uint256 stopAt,
+        uint256[] calldata candidateIds,
+        string[] calldata candidateNames,
+        uint256[] calldata voteCounts,
+        bytes32 historyHash
+    ) external returns (uint256 version);
+}
+
 /**
  * @title VotingRoom
  * @notice EIP-1167 compatible voting room with one-voter-one-vote per round
@@ -26,6 +41,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     address public roomAdmin;
     string public roomName;
     address public sponsorVault;
+    address public resultCenter;
 
     State public state;
     uint256 public currentRound;
@@ -87,6 +103,14 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         bytes32 actionId
     );
     event MaxCostUpdated(address indexed room, uint256 oldCost, uint256 newCost);
+    event ResultCenterUpdated(address indexed room, address indexed oldCenter, address indexed newCenter);
+    event RoundHistorySubmitted(
+        address indexed room,
+        uint256 indexed round,
+        uint256 indexed version,
+        bytes32 historyHash,
+        address resultCenter
+    );
 
     error AlreadyInitialized();
     error NotInitialized();
@@ -107,6 +131,8 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     error RoundAlreadyPrepared();
     error VaultWithdrawalFailed(bytes returnData);
     error TransferToAdminFailed();
+    error ResultCenterNotConfigured();
+    error RoundHistoryNotSaved(uint256 round);
 
     modifier onlyAdmin() {
         if (_msgSender() != roomAdmin) revert OnlyRoomAdmin();
@@ -159,11 +185,20 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         emit MaxCostUpdated(address(this), oldCost, newCost);
     }
 
-    function addVoter(address voter) external onlyInitialized onlyAdmin onlyInactive {
+    function setResultCenter(address newCenter) external onlyInitialized onlyAdmin onlyInactive {
+        if (newCenter == address(0)) revert ZeroAddress();
+
+        address oldCenter = resultCenter;
+        resultCenter = newCenter;
+
+        emit ResultCenterUpdated(address(this), oldCenter, newCenter);
+    }
+
+    function addVoter(address voter) external onlyInitialized onlyAdmin {
         _addVoter(voter);
     }
 
-    function addVoters(address[] calldata voters) external onlyInitialized onlyAdmin onlyInactive {
+    function addVoters(address[] calldata voters) external onlyInitialized onlyAdmin {
         if (voters.length > MAX_BATCH_SIZE) revert ArrayTooLarge(voters.length, MAX_BATCH_SIZE);
         for (uint256 i = 0; i < voters.length; i++) {
             _addVoter(voters[i]);
@@ -311,6 +346,29 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         }
     }
 
+    function submitRoundHistory(uint256 round) external onlyInitialized onlyAdmin returns (uint256 version) {
+        if (resultCenter == address(0)) revert ResultCenterNotConfigured();
+        if (!roundHistorySaved[round]) revert RoundHistoryNotSaved(round);
+
+        RoundHistory storage history = roundHistories[round];
+        bytes32 historyHash = getRoundHistoryHash(round);
+
+        version = IVotingResultCenter(resultCenter).submitRoundResult({
+            roundId: history.roundId,
+            admin: history.admin,
+            totalVoter: history.totalVoter,
+            totalGolput: history.totalGolput,
+            startAt: history.startAt,
+            stopAt: history.stopAt,
+            candidateIds: history.candidateIds,
+            candidateNames: history.candidateNames,
+            voteCounts: history.voteCounts,
+            historyHash: historyHash
+        });
+
+        emit RoundHistorySubmitted(address(this), round, version, historyHash, resultCenter);
+    }
+
     function isVoterEligible(address voter) external view returns (bool) {
         return voterRegistry[voter];
     }
@@ -379,6 +437,26 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     ) {
         RoundHistory storage history = roundHistories[round];
         return (history.candidateIds, history.candidateNames, history.voteCounts);
+    }
+
+    function getRoundHistoryHash(uint256 round) public view returns (bytes32) {
+        if (!roundHistorySaved[round]) revert RoundHistoryNotSaved(round);
+
+        RoundHistory storage history = roundHistories[round];
+        return keccak256(
+            abi.encode(
+                history.room,
+                history.roundId,
+                history.admin,
+                history.totalVoter,
+                history.totalGolput,
+                history.startAt,
+                history.stopAt,
+                history.candidateIds,
+                history.candidateNames,
+                history.voteCounts
+            )
+        );
     }
 
     function getCurrentRoundStatus()

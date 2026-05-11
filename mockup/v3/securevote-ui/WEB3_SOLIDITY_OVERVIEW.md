@@ -8,7 +8,7 @@ Dokumen ini menggantikan versi lama di:
 
 ## Kontrak yang Dipakai
 
-Sistem saat ini memakai 4 komponen utama:
+Sistem saat ini memakai 5 komponen utama:
 
 1. `RoomFactory`
    Dipakai untuk membuat room voting baru.
@@ -22,6 +22,9 @@ Sistem saat ini memakai 4 komponen utama:
 4. `MinimalForwarder`
    Dipakai untuk meta-transaction saat voter melakukan gasless vote.
 
+5. `VotingResultCenter`
+   Kontrak pusat untuk menerima hasil/histori round dari setiap `VotingRoom`. Setiap pengiriman dari satu room disimpan sebagai version baru.
+
 ## Prinsip Penting
 
 Beberapa prinsip penting pada versi sistem saat ini:
@@ -29,8 +32,10 @@ Beberapa prinsip penting pada versi sistem saat ini:
 - Satu room hanya punya satu admin.
 - Satu voter hanya bisa vote satu kali per round.
 - Voting hanya bisa berjalan saat room berada pada state `Active`.
-- Voter dan kandidat hanya bisa diatur saat room `Inactive`.
+- Kandidat hanya bisa diatur saat room `Inactive`.
+- Voter bisa ditambahkan saat room `Inactive` maupun `Active`; voter yang ditambahkan saat round berjalan ikut dihitung sebagai eligible voter pada round tersebut.
 - Histori hasil round disimpan saat admin memanggil `stop()`.
+- Histori hasil round bisa dikirim admin ke `VotingResultCenter` setelah `stop()`.
 - Gasless vote hanya dipakai untuk `vote(uint256)`, bukan untuk fungsi admin.
 - `VotingRoom` di `frontend/src/config/contracts.js` adalah implementation/template, bukan room yang dipakai voting langsung.
 
@@ -72,6 +77,7 @@ Langkah:
    - `trustedForwarder = address MinimalForwarder`
 5. Address room baru disimpan di `roomOwner`, `isRoom`, dan `allRooms`.
 6. Registration fee diteruskan ke `SponsorVault`.
+7. Jika ingin publish histori ke pusat, admin atau operator perlu memanggil `VotingRoom.setResultCenter(address VotingResultCenter)` saat room `Inactive`.
 
 Hasil:
 
@@ -102,8 +108,9 @@ Fungsi yang bisa dipakai:
 Aturan:
 
 - Hanya admin room yang boleh menambah voter.
-- Hanya boleh dilakukan saat `Inactive`.
+- Bisa dilakukan saat `Inactive` maupun `Active`.
 - Voter duplikat akan gagal karena ada validasi `DuplicateVoter`.
+- Jika voter ditambahkan ketika round sedang `Active`, voter tersebut langsung bisa vote pada round berjalan selama belum pernah vote pada round itu.
 
 Hasil:
 
@@ -280,6 +287,7 @@ Setelah `stop()`, hasil bisa dibaca lewat:
 - `getRoundHistory(round)`
 - `getRoundHistoryCandidates(round)`
 - `getVotes(round, candidateId)`
+- `getRoundHistoryHash(round)`
 
 Contoh hasil round 1:
 
@@ -297,6 +305,39 @@ Catatan penting:
 
 - Contract tidak memilih pemenang secara otomatis.
 - Penentuan siapa pemenang dilakukan di level pembacaan hasil, berdasarkan kandidat dengan vote terbanyak.
+
+### 9A. Admin mengirim histori round ke pusat
+
+Setelah `stop()`, admin room bisa mengirim histori round ke kontrak pusat:
+
+- `VotingRoom.submitRoundHistory(round)`
+
+Syarat:
+
+- `VotingRoom.resultCenter` sudah diset ke address `VotingResultCenter`.
+- Round tersebut sudah dihentikan dan `roundHistorySaved[round] == true`.
+- Caller adalah admin room.
+- Room tersebut terdaftar di `RoomFactory.isRoom(room)`, karena `VotingResultCenter` menolak submit dari address yang bukan room resmi factory.
+
+Efek:
+
+- `VotingRoom` menghitung hash histori lewat `getRoundHistoryHash(round)`.
+- `VotingRoom` mengirim ringkasan round, daftar kandidat, jumlah vote, dan hash ke `VotingResultCenter`.
+- `VotingResultCenter` menambah version baru untuk address room tersebut.
+- Event `RoundHistorySubmitted` dan `RoundResultSubmitted` dipancarkan.
+
+Fungsi baca di kontrak pusat:
+
+- `getRoomCount()`: jumlah room yang pernah mengirim histori.
+- `getRooms()`: semua address room yang pernah mengirim histori.
+- `getRoomAt(index)`: address room berdasarkan index.
+- `getRoomAdmin(room)`: admin room yang tercatat saat submit pertama.
+- `getRoomWithAdminAt(index)`: address room dan admin berdasarkan index.
+- `getRoomsWithAdmins()`: semua address room beserta admin masing-masing.
+- `getRoomVersionCount(room)`: berapa kali room tersebut mengirim histori.
+- `getLatestVersion(room)`: version terbaru untuk room.
+- `getRoomVersionSummary(room, version)`: metadata version, termasuk `roundId`, total voter, golput, timestamp, dan `historyHash`.
+- `getRoomVersionCandidates(room, version)`: kandidat dan jumlah vote pada version tersebut.
 
 ### 10. Setelah voting selesai: pilih `restart()` atau `reset()`
 
