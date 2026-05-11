@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-interface ISponsorVault {
-    function roomBalance(address room) external view returns (uint256);
-}
 
 interface IVotingResultCenter {
     function submitRoundResult(
@@ -25,10 +20,10 @@ interface IVotingResultCenter {
 
 /**
  * @title VotingRoom
- * @notice EIP-1167 compatible voting room with one-voter-one-vote per round
- * @dev NO constructor logic beyond trusted forwarder setup for clone compatibility
+ * @notice EIP-1167 compatible direct-vote room with one-voter-one-vote per round.
+ * @dev Voters call vote() directly from their own EOA. No relayer, vault, or forwarder is used.
  */
-contract VotingRoom is ERC2771Context, ReentrancyGuard {
+contract VotingRoom is ReentrancyGuard {
     enum State {
         Inactive,
         Active
@@ -40,12 +35,10 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
 
     address public roomAdmin;
     string public roomName;
-    address public sponsorVault;
     address public resultCenter;
 
     State public state;
     uint256 public currentRound;
-    uint256 public maxCostPerVoteWei;
     uint256 public activeRoundStartAt;
     bool public roundReadyToStart;
 
@@ -102,7 +95,6 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         uint256 candidateId,
         bytes32 actionId
     );
-    event MaxCostUpdated(address indexed room, uint256 oldCost, uint256 newCost);
     event ResultCenterUpdated(address indexed room, address indexed oldCenter, address indexed newCenter);
     event RoundHistorySubmitted(
         address indexed room,
@@ -129,13 +121,11 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     error NoCandidatesConfigured();
     error RoundNotReady();
     error RoundAlreadyPrepared();
-    error VaultWithdrawalFailed(bytes returnData);
-    error TransferToAdminFailed();
     error ResultCenterNotConfigured();
     error RoundHistoryNotSaved(uint256 round);
 
     modifier onlyAdmin() {
-        if (_msgSender() != roomAdmin) revert OnlyRoomAdmin();
+        if (msg.sender != roomAdmin) revert OnlyRoomAdmin();
         _;
     }
 
@@ -154,35 +144,19 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         _;
     }
 
-    constructor(address trustedForwarder) ERC2771Context(trustedForwarder) {}
-
-    function initialize(
-        address _roomAdmin,
-        string calldata _roomName,
-        address _sponsorVault,
-        address _trustedForwarder
-    ) external {
+    function initialize(address _roomAdmin, string calldata _roomName) external {
         if (initialized) revert AlreadyInitialized();
-        if (_roomAdmin == address(0) || _sponsorVault == address(0)) revert ZeroAddress();
-
-        _trustedForwarder;
+        if (_roomAdmin == address(0)) revert ZeroAddress();
 
         initialized = true;
         roomAdmin = _roomAdmin;
         roomName = _roomName;
-        sponsorVault = _sponsorVault;
 
         state = State.Inactive;
         currentRound = 1;
         roundReadyToStart = true;
 
         emit RoomInitialized(_roomAdmin, _roomName);
-    }
-
-    function setMaxCostPerVote(uint256 newCost) external onlyInitialized onlyAdmin onlyInactive {
-        uint256 oldCost = maxCostPerVoteWei;
-        maxCostPerVoteWei = newCost;
-        emit MaxCostUpdated(address(this), oldCost, newCost);
     }
 
     function setResultCenter(address newCenter) external onlyInitialized onlyAdmin onlyInactive {
@@ -210,24 +184,14 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
 
     function removeAllVoters() external onlyInitialized onlyAdmin onlyInactive {
-        uint256 length = voterList.length;
-        for (uint256 i = 0; i < length; i++) {
-            address voter = voterList[i];
-            delete voterRegistry[voter];
-            delete voterIndexPlusOne[voter];
-            emit VoterRemoved(address(this), voter);
-        }
-        delete voterList;
+        _clearAllVoters();
     }
 
     function addCandidate(uint256 candidateId, string calldata name) external onlyInitialized onlyAdmin onlyInactive {
         _addCandidate(candidateId, name);
     }
 
-    function addCandidates(
-        uint256[] calldata ids,
-        string[] calldata names
-    ) external onlyInitialized onlyAdmin onlyInactive {
+    function addCandidates(uint256[] calldata ids, string[] calldata names) external onlyInitialized onlyAdmin onlyInactive {
         if (ids.length != names.length) revert InvalidAmount();
         if (ids.length > MAX_BATCH_SIZE) revert ArrayTooLarge(ids.length, MAX_BATCH_SIZE);
         for (uint256 i = 0; i < ids.length; i++) {
@@ -240,15 +204,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
 
     function removeAllCandidates() external onlyInitialized onlyAdmin onlyInactive {
-        uint256 length = candidateIds.length;
-        for (uint256 i = 0; i < length; i++) {
-            uint256 candidateId = candidateIds[i];
-            delete candidateRegistry[candidateId];
-            delete candidateIndexPlusOne[candidateId];
-            delete candidateName[candidateId];
-            emit CandidateRemoved(address(this), candidateId);
-        }
-        delete candidateIds;
+        _clearAllCandidates();
     }
 
     function start() external onlyInitialized onlyAdmin onlyInactive {
@@ -314,7 +270,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
     }
 
     function vote(uint256 candidateId) external onlyInitialized nonReentrant inState(State.Active) {
-        address voter = _msgSender();
+        address voter = msg.sender;
 
         if (!voterRegistry[voter]) revert VoterNotEligible();
         if (lastVotedRound[voter] == currentRound) revert AlreadyVotedThisRound();
@@ -326,24 +282,6 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
 
         bytes32 actionId = keccak256(abi.encodePacked(address(this), currentRound, voter));
         emit VoteCast(address(this), currentRound, voter, candidateId, actionId);
-    }
-
-    function withdrawDeposit(uint256 amount) external onlyInitialized onlyAdmin onlyInactive nonReentrant {
-        if (amount == 0) revert InvalidAmount();
-
-        uint256 balanceBefore = address(this).balance;
-        (bool success, bytes memory returnData) = sponsorVault.call(
-            abi.encodeWithSignature("withdraw(address,uint256)", address(this), amount)
-        );
-        if (!success) {
-            revert VaultWithdrawalFailed(returnData);
-        }
-
-        uint256 received = address(this).balance - balanceBefore;
-        (bool sent, ) = roomAdmin.call{value: received}("");
-        if (!sent) {
-            revert TransferToAdminFailed();
-        }
     }
 
     function submitRoundHistory(uint256 round) external onlyInitialized onlyAdmin returns (uint256 version) {
@@ -407,15 +345,19 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
 
     function getRoundHistory(
         uint256 round
-    ) external view returns (
-        address room,
-        uint256 roundId,
-        address admin,
-        uint256 totalVoter,
-        uint256 totalGolput,
-        uint256 startAt,
-        uint256 stopAt
-    ) {
+    )
+        external
+        view
+        returns (
+            address room,
+            uint256 roundId,
+            address admin,
+            uint256 totalVoter,
+            uint256 totalGolput,
+            uint256 startAt,
+            uint256 stopAt
+        )
+    {
         RoundHistory storage history = roundHistories[round];
         return (
             history.room,
@@ -430,11 +372,7 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
 
     function getRoundHistoryCandidates(
         uint256 round
-    ) external view returns (
-        uint256[] memory ids,
-        string[] memory names,
-        uint256[] memory voteCounts
-    ) {
+    ) external view returns (uint256[] memory ids, string[] memory names, uint256[] memory voteCounts) {
         RoundHistory storage history = roundHistories[round];
         return (history.candidateIds, history.candidateNames, history.voteCounts);
     }
@@ -552,6 +490,4 @@ contract VotingRoom is ERC2771Context, ReentrancyGuard {
         }
         delete voterList;
     }
-
-    receive() external payable {}
 }

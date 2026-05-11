@@ -1,47 +1,75 @@
 # WEB3 / SOLIDITY OVERVIEW
 
-Dokumen ini menjelaskan cara kerja sistem voting yang saat ini dipakai oleh `mockup/v3/securevote-ui`, dengan fokus pada alur operasional dari membuat room sampai voting selesai.
+Dokumen ini menjelaskan flow Web3 terbaru untuk `mockup/v3/securevote-ui`.
 
-Dokumen ini menggantikan versi lama di:
-
-- `(outdated)-WEB3_SOLIDITY_OVERVIEW.md`
+Versi terbaru memakai **direct vote** di private network Besu. Voter memanggil `vote()` langsung dari EOA masing-masing, sehingga sistem tidak lagi memakai reimbursement relayer, deposit room, `SponsorVault`, atau `MinimalForwarder`.
 
 ## Kontrak yang Dipakai
 
-Sistem saat ini memakai 5 komponen utama:
+Sistem aktif sekarang memakai 3 kontrak utama:
 
 1. `RoomFactory`
-   Dipakai untuk membuat room voting baru.
+   Membuat room voting baru sebagai clone dari implementation `VotingRoom`.
 
 2. `VotingRoom`
-   Logic utama room voting. Room yang dipakai user adalah clone/instance hasil `createRoom()`, bukan implementation.
+   Logic utama voting room: setup voter, setup kandidat, start, vote, stop, restart, reset, simpan histori round, dan submit histori ke pusat.
 
-3. `SponsorVault`
-   Menyimpan registration fee, deposit room, dan membayar relayer untuk gasless vote.
+3. `VotingResultCenter`
+   Kontrak pusat untuk menerima hasil / histori round dari setiap `VotingRoom`. Setiap pengiriman dari satu room disimpan sebagai version baru.
 
-4. `MinimalForwarder`
-   Dipakai untuk meta-transaction saat voter melakukan gasless vote.
+## Kontrak yang Tidak Dipakai Lagi di Flow Utama
 
-5. `VotingResultCenter`
-   Kontrak pusat untuk menerima hasil/histori round dari setiap `VotingRoom`. Setiap pengiriman dari satu room disimpan sebagai version baru.
+Kontrak berikut tidak lagi dipakai pada flow v2 direct-vote:
+
+- `SponsorVault`
+- `MinimalForwarder`
+
+Alasannya:
+
+- Tidak ada `registrationFeeWei`.
+- Tidak ada deposit room.
+- Tidak ada reimbursement relayer.
+- Tidak ada meta-transaction / gasless vote.
+- Voter melakukan transaksi langsung dari wallet / EOA masing-masing.
 
 ## Prinsip Penting
-
-Beberapa prinsip penting pada versi sistem saat ini:
 
 - Satu room hanya punya satu admin.
 - Satu voter hanya bisa vote satu kali per round.
 - Voting hanya bisa berjalan saat room berada pada state `Active`.
 - Kandidat hanya bisa diatur saat room `Inactive`.
-- Voter bisa ditambahkan saat room `Inactive` maupun `Active`; voter yang ditambahkan saat round berjalan ikut dihitung sebagai eligible voter pada round tersebut.
+- Voter bisa ditambahkan saat room `Inactive` maupun `Active`.
+- Voter yang ditambahkan saat round berjalan ikut dihitung sebagai eligible voter pada round tersebut.
+- `totalVoter` pada histori dihitung dari jumlah voter saat admin memanggil `stop()`.
 - Histori hasil round disimpan saat admin memanggil `stop()`.
 - Histori hasil round bisa dikirim admin ke `VotingResultCenter` setelah `stop()`.
-- Gasless vote hanya dipakai untuk `vote(uint256)`, bukan untuk fungsi admin.
-- `VotingRoom` di `frontend/src/config/contracts.js` adalah implementation/template, bukan room yang dipakai voting langsung.
+- `VotingRoom` di frontend config adalah implementation/template, bukan room yang dipakai voting langsung.
+
+## Direct Vote Tanpa MinimalForwarder
+
+Direct vote tetap bisa berjalan tanpa `MinimalForwarder`.
+
+Pada mode ini:
+
+1. Voter membuka frontend.
+2. Voter connect wallet ke network Besu.
+3. Frontend memanggil `VotingRoom.vote(candidateId)`.
+4. Transaksi dikirim langsung dari address voter.
+5. Di Solidity, `msg.sender` adalah address voter asli.
+6. Kontrak mengecek apakah `msg.sender` terdaftar sebagai voter.
+
+Konsekuensi:
+
+- Voter harus punya EOA / wallet.
+- Voter perlu punya native coin Besu untuk membayar gas.
+- Tidak perlu tanda tangan EIP-712.
+- Tidak perlu relayer backend.
+- Tidak perlu reimbursement gas.
+- Flow lebih sederhana dan transparan untuk private network.
 
 ## Ringkasan State Room
 
-State room saat ini sederhana:
+State room:
 
 - `Inactive`
   Room belum mulai voting atau sudah dihentikan.
@@ -49,238 +77,230 @@ State room saat ini sederhana:
 - `Active`
   Voting sedang berjalan dan voter bisa memanggil `vote()`.
 
-Selain state, ada flag `roundReadyToStart`:
+Flag tambahan:
 
-- `true`: round siap dimulai lewat `start()`
-- `false`: round sebelumnya sudah selesai dan admin harus pilih `restart()` atau `reset()` dulu sebelum mulai lagi
+- `roundReadyToStart == true`
+  Round siap dimulai lewat `start()`.
 
-## Kasus End-to-End: Dari Buat Room Sampai Voting Selesai
+- `roundReadyToStart == false`
+  Round sebelumnya sudah selesai dan admin harus memilih `restart()` atau `reset()` sebelum mulai lagi.
 
-Di bawah ini contoh kasus operasional yang sesuai dengan flow sistem saat ini.
+## Flow End-to-End
 
-### 1. Admin membuat room baru
+### 1. Deploy kontrak
 
-Contoh:
+Urutan deploy yang disarankan:
 
-- Admin: `0xAdmin`
-- Nama room: `Pemilihan Ketua RT 2026`
+1. Deploy `VotingRoom` implementation.
+2. Deploy `RoomFactory` dengan parameter constructor:
 
-Langkah:
+```solidity
+votingRoomImplementation
+```
 
-1. Admin memanggil `RoomFactory.createRoom("Pemilihan Ketua RT 2026")`.
-2. Admin wajib mengirim ETH minimal sebesar `registrationFeeWei`.
-3. `RoomFactory` membuat clone baru dari `VotingRoom` implementation.
-4. Clone room di-`initialize()` dengan:
-   - `roomAdmin = 0xAdmin`
-   - `roomName = "Pemilihan Ketua RT 2026"`
-   - `sponsorVault = address SponsorVault`
-   - `trustedForwarder = address MinimalForwarder`
-5. Address room baru disimpan di `roomOwner`, `isRoom`, dan `allRooms`.
-6. Registration fee diteruskan ke `SponsorVault`.
-7. Jika ingin publish histori ke pusat, admin atau operator perlu memanggil `VotingRoom.setResultCenter(address VotingResultCenter)` saat room `Inactive`.
+3. Deploy `VotingResultCenter` dengan parameter constructor:
 
-Hasil:
+```solidity
+roomFactoryAddress
+```
 
-- Terbentuk satu room instance baru, misalnya `0xRoomA`.
-- Room awal berada di kondisi:
-  - `state = Inactive`
-  - `currentRound = 1`
-  - `roundReadyToStart = true`
+Expected result:
 
-Catatan penting:
+- `RoomFactory.votingRoomImplementation()` menunjuk ke implementation `VotingRoom`.
+- `VotingResultCenter.roomFactory()` menunjuk ke `RoomFactory`.
+- `VotingResultCenter` hanya menerima submit dari room yang valid menurut `RoomFactory.isRoom(room)`.
 
-- Address `0xRoomA` inilah yang harus dipakai untuk `start`, `vote`, `stop`, `restart`, dan `reset`.
-- Jangan memakai address implementation `VotingRoom` di config untuk voting langsung.
+### 2. Admin membuat room baru
 
-### 2. Admin menyiapkan daftar voter
+Admin memanggil:
 
-Sebelum voting dimulai, admin mendaftarkan voter ke room clone, misalnya:
+```solidity
+RoomFactory.createRoom("Pemilihan Ketua RT 2026")
+```
 
-- `0xVoter1`
-- `0xVoter2`
-- `0xVoter3`
+Perubahan penting:
 
-Fungsi yang bisa dipakai:
+- `createRoom()` tidak lagi `payable`.
+- Tidak ada `registrationFeeWei`.
+- Tidak ada pembayaran ke `SponsorVault`.
+- Room bisa langsung dibuat.
 
-- `addVoter(address voter)`
-- `addVoters(address[] voters)`
+Expected result:
 
-Aturan:
+- Room clone baru dibuat.
+- Room di-initialize dengan:
+  - `roomAdmin = msg.sender`
+  - `roomName = "Pemilihan Ketua RT 2026"`
+- Address room masuk ke `RoomFactory.allRooms`.
+- `RoomFactory.isRoom(roomAddress) == true`.
+- `RoomFactory.roomOwner(roomAddress) == admin`.
+- Event `RoomRegistered(room, admin, name)` dipancarkan.
 
-- Hanya admin room yang boleh menambah voter.
-- Bisa dilakukan saat `Inactive` maupun `Active`.
-- Voter duplikat akan gagal karena ada validasi `DuplicateVoter`.
-- Jika voter ditambahkan ketika round sedang `Active`, voter tersebut langsung bisa vote pada round berjalan selama belum pernah vote pada round itu.
+### 3. Admin mengatur result center
 
-Hasil:
+Admin memanggil dari room clone:
 
-- Address voter masuk ke `voterRegistry`
-- Address voter masuk ke `voterList`
-
-### 3. Admin menyiapkan kandidat
-
-Contoh kandidat:
-
-- ID `1` = `Andi`
-- ID `2` = `Budi`
-
-Fungsi yang bisa dipakai:
-
-- `addCandidate(uint256 candidateId, string name)`
-- `addCandidates(uint256[] ids, string[] names)`
-
-Aturan:
-
-- Hanya admin room yang boleh menambah kandidat.
-- Hanya boleh dilakukan saat `Inactive`.
-- ID kandidat tidak boleh duplikat.
-
-Hasil:
-
-- Kandidat masuk ke `candidateRegistry`
-- Nama kandidat tersimpan di `candidateName`
-- ID kandidat masuk ke `candidateIds`
-
-### 4. Admin menyiapkan deposit untuk gasless vote
-
-Langkah ini dibutuhkan jika room ingin mendukung gasless vote.
-
-Langkah:
-
-1. Admin melakukan `SponsorVault.topup(roomAddress)` dengan mengirim ETH.
-2. Saldo deposit room akan tercatat di `roomBalance[room]`.
-3. Admin bisa mengatur batas biaya vote dengan `VotingRoom.setMaxCostPerVote(uint256 newCost)` saat room masih `Inactive`.
-
-Hubungannya dengan relayer:
-
-- Saat relayer memproses gasless vote, relayer akan mengecek:
-  - room balance cukup
-  - `maxCostPerVoteWei` memadai
-- Setelah vote sukses, relayer akan meminta reimbursement ke `SponsorVault.settleAndWithdraw(...)`
-
-Kalau hanya ingin direct vote biasa:
-
-- Deposit room tidak wajib.
-- Voter membayar gas sendiri dari wallet mereka.
-
-### 5. Admin memulai voting
-
-Setelah voter dan kandidat siap, admin memanggil:
-
-- `VotingRoom.start()`
+```solidity
+VotingRoom.setResultCenter(votingResultCenterAddress)
+```
 
 Syarat:
 
-- Room harus `Inactive`
-- `roundReadyToStart == true`
-- Minimal ada 1 voter
-- Minimal ada 1 kandidat
+- Caller adalah admin room.
+- Room sudah initialized.
+- Room sedang `Inactive`.
+- Address result center bukan zero address.
 
-Efek:
+Expected result:
 
-- `state` berubah menjadi `Active`
-- `activeRoundStartAt` diset ke timestamp saat itu
-- Event `RoundStarted` dipancarkan
+- `VotingRoom.resultCenter()` berisi address `VotingResultCenter`.
+- Event `ResultCenterUpdated` dipancarkan.
 
-Hasil bisnis:
+### 4. Admin menambahkan voter
 
-- Round 1 resmi dimulai
-- Voter sudah boleh memberikan suara
+Admin bisa memanggil:
 
-### 6. Voter melakukan voting
+```solidity
+VotingRoom.addVoter(voterAddress)
+```
 
-Saat room `Active`, voter memilih kandidat dengan:
+atau:
 
-- `vote(candidateId)`
+```solidity
+VotingRoom.addVoters(voterAddresses)
+```
 
-Contoh:
+Aturan:
 
-- `0xVoter1` memilih kandidat `1`
-- `0xVoter2` memilih kandidat `2`
-- `0xVoter3` memilih kandidat `1`
+- Hanya admin room.
+- Bisa dilakukan saat `Inactive`.
+- Bisa dilakukan saat `Active`.
+- Voter duplikat akan revert `DuplicateVoter`.
 
-Validasi saat `vote()`:
+Expected result:
 
-1. Caller harus voter terdaftar.
-2. Caller belum pernah vote di round yang sama.
-3. Kandidat yang dipilih harus valid.
-4. Room harus sedang `Active`.
+- Address voter masuk ke `voterRegistry`.
+- Address voter masuk ke `voterList`.
+- Jika voter ditambahkan saat room `Active`, voter tersebut langsung bisa vote pada round berjalan selama belum pernah vote pada round itu.
 
-Efek on-chain:
+### 5. Admin menambahkan kandidat
 
-- `roundVotes[currentRound][candidateId] += 1`
-- `roundTotalVotes[currentRound] += 1`
-- `lastVotedRound[voter] = currentRound`
-- Event `VoteCast` dipancarkan
+Admin bisa memanggil:
 
-Karena sistem sekarang adalah one-voter-one-vote:
+```solidity
+VotingRoom.addCandidate(candidateId, candidateName)
+```
 
-- Setiap voter hanya menambah 1 suara ke kandidat yang dipilih.
-- Tidak ada credit/bobot suara seperti versi lama.
+atau:
 
-### 7. Dua mode voting: direct dan gasless
+```solidity
+VotingRoom.addCandidates(candidateIds, candidateNames)
+```
 
-#### Direct vote
+Aturan:
 
-Pada direct vote:
+- Hanya admin room.
+- Hanya bisa dilakukan saat `Inactive`.
+- Candidate id tidak boleh duplikat.
 
-1. Voter memanggil `vote()` langsung dari wallet.
-2. Gas dibayar oleh voter.
-3. Contract tetap mencatat hasil vote dengan logic yang sama.
+Expected result:
 
-#### Gasless vote
+- Candidate id masuk ke `candidateRegistry`.
+- Candidate name tersimpan di `candidateName`.
+- Candidate id masuk ke `candidateIds`.
 
-Pada gasless vote:
+### 6. Admin memulai voting
 
-1. Frontend membuat data call `vote(candidateId)`.
-2. Frontend membaca nonce dari `MinimalForwarder`.
-3. Voter menandatangani EIP-712 `ForwardRequest`.
-4. Frontend mengirim request bertanda tangan ke relayer `/relay`.
-5. Relayer memverifikasi signature lewat `MinimalForwarder.verify(...)`.
-6. Relayer hanya mengizinkan meta-tx untuk fungsi `vote(uint256)`.
-7. Relayer melakukan pre-check:
-   - chain sesuai
-   - room balance cukup
-   - jika `maxCostPerVoteWei > 0`, balance room minimal `2x maxCostPerVoteWei`
-8. Relayer menjalankan `forwarder.execute(...)`.
-9. Jika vote sukses dan event `VoteCast` ditemukan, relayer mengambil `actionId`.
-10. Relayer memanggil `SponsorVault.settleAndWithdraw(room, actionId, chargedAmount)`.
-11. Deposit room berkurang, lalu relayer menerima reimbursement.
+Admin memanggil:
 
-Hasil:
+```solidity
+VotingRoom.start()
+```
 
-- Bagi contract `VotingRoom`, hasil akhirnya tetap sama dengan direct vote.
-- Perbedaannya hanya pada siapa yang membayar gas.
+Syarat:
+
+- Room `Inactive`.
+- `roundReadyToStart == true`.
+- Minimal ada 1 voter.
+- Minimal ada 1 kandidat.
+
+Expected result:
+
+- Room berubah menjadi `Active`.
+- `activeRoundStartAt` diisi timestamp.
+- Event `RoundStarted` dipancarkan.
+
+### 7. Voter melakukan direct vote
+
+Voter memanggil:
+
+```solidity
+VotingRoom.vote(candidateId)
+```
+
+Validasi:
+
+- Room sedang `Active`.
+- `msg.sender` terdaftar sebagai voter.
+- `msg.sender` belum pernah vote di round tersebut.
+- Candidate id valid.
+
+Expected result:
+
+- `roundVotes[currentRound][candidateId] += 1`.
+- `roundTotalVotes[currentRound] += 1`.
+- `lastVotedRound[msg.sender] = currentRound`.
+- Event `VoteCast` dipancarkan.
 
 ### 8. Admin menghentikan voting
 
-Ketika periode voting selesai, admin memanggil:
+Admin memanggil:
 
-- `VotingRoom.stop()`
+```solidity
+VotingRoom.stop()
+```
 
-Syarat:
+Expected result:
 
-- Room harus sedang `Active`
+- Room berubah kembali menjadi `Inactive`.
+- Histori round disimpan di `roundHistories[currentRound]`.
+- `roundHistorySaved[currentRound] == true`.
+- `roundReadyToStart == false`.
+- `totalVoter = voterList.length` pada saat `stop()`.
+- `totalGolput = totalVoter - roundTotalVotes[currentRound]`.
+- Event `RoundStopped` dipancarkan.
 
-Efek penting:
+### 9. Admin submit histori round ke pusat
 
-1. Timestamp berhenti disimpan ke `stopAt`.
-2. Jumlah voter diambil dari `voterList.length`.
-3. `totalGolput` dihitung sebagai:
-   `totalVoter - roundTotalVotes[currentRound]`
-4. Semua data kandidat dan jumlah suaranya untuk round aktif disalin ke `roundHistories[currentRound]`.
-5. `roundHistorySaved[currentRound] = true`
-6. `activeRoundStartAt = 0`
-7. `roundReadyToStart = false`
-8. `state` kembali menjadi `Inactive`
+Admin memanggil:
 
-Makna bisnis:
+```solidity
+VotingRoom.submitRoundHistory(round)
+```
 
-- Round dinyatakan selesai.
-- Hasil round sudah dibekukan ke histori.
-- Room belum bisa langsung `start()` lagi sampai admin memutuskan lanjut round baru atau reset.
+Contoh:
 
-### 9. Membaca hasil voting
+```solidity
+VotingRoom.submitRoundHistory(1)
+```
+
+Cara kerja:
+
+1. `VotingRoom` mengecek `resultCenter` sudah diset.
+2. `VotingRoom` mengecek histori round sudah tersimpan.
+3. `VotingRoom` menghitung `historyHash`.
+4. `VotingRoom` memanggil `VotingResultCenter.submitRoundResult(...)`.
+5. `VotingResultCenter` mengecek caller adalah room resmi dari `RoomFactory`.
+6. `VotingResultCenter` menyimpan data sebagai version baru untuk room tersebut.
+
+Expected result:
+
+- Submit pertama dari room menjadi version `1`.
+- Submit berikutnya dari room yang sama menjadi version `2`, `3`, dan seterusnya.
+- Event `RoundHistorySubmitted` dipancarkan dari `VotingRoom`.
+- Event `RoundResultSubmitted` dipancarkan dari `VotingResultCenter`.
+
+## Fungsi Baca Hasil di Room
 
 Setelah `stop()`, hasil bisa dibaca lewat:
 
@@ -289,183 +309,148 @@ Setelah `stop()`, hasil bisa dibaca lewat:
 - `getVotes(round, candidateId)`
 - `getRoundHistoryHash(round)`
 
-Contoh hasil round 1:
+## Fungsi Baca Hasil di Pusat
 
-- Total voter: `3`
-- Suara kandidat 1: `2`
-- Suara kandidat 2: `1`
-- Golput: `0`
+Fungsi di `VotingResultCenter`:
 
-Kalau hanya 2 dari 3 voter yang vote:
+- `getRoomCount()`
+- `getRooms()`
+- `getRoomAt(index)`
+- `getRoomAdmin(room)`
+- `getRoomWithAdminAt(index)`
+- `getRoomsWithAdmins()`
+- `getRoomVersionCount(room)`
+- `getLatestVersion(room)`
+- `getRoomVersionSummary(room, version)`
+- `getRoomVersionCandidates(room, version)`
 
-- `roundTotalVotes[1] = 2`
-- `totalGolput = 1`
+## Contoh Kasus: Direct Vote Satu Round
 
-Catatan penting:
+Data:
 
-- Contract tidak memilih pemenang secara otomatis.
-- Penentuan siapa pemenang dilakukan di level pembacaan hasil, berdasarkan kandidat dengan vote terbanyak.
+- Admin: `0xAdmin`
+- Room: `0xRoomA`
+- Voter:
+  - `0xVoter1`
+  - `0xVoter2`
+  - `0xVoter3`
+- Kandidat:
+  - `1 = Andi`
+  - `2 = Budi`
 
-### 9A. Admin mengirim histori round ke pusat
+Alur:
 
-Setelah `stop()`, admin room bisa mengirim histori round ke kontrak pusat:
+1. Admin membuat room lewat `createRoom()`.
+2. Admin set result center.
+3. Admin menambahkan 3 voter.
+4. Admin menambahkan 2 kandidat.
+5. Admin memanggil `start()`.
+6. `0xVoter1` vote kandidat 1.
+7. `0xVoter2` vote kandidat 2.
+8. `0xVoter3` vote kandidat 1.
+9. Admin memanggil `stop()`.
+10. Admin memanggil `submitRoundHistory(1)`.
 
-- `VotingRoom.submitRoundHistory(round)`
+Expected result di room:
 
-Syarat:
+```text
+roundTotalVotes[1] = 3
+roundVotes[1][1] = 2
+roundVotes[1][2] = 1
+totalVoter = 3
+totalGolput = 0
+roundHistorySaved[1] = true
+```
 
-- `VotingRoom.resultCenter` sudah diset ke address `VotingResultCenter`.
-- Round tersebut sudah dihentikan dan `roundHistorySaved[round] == true`.
-- Caller adalah admin room.
-- Room tersebut terdaftar di `RoomFactory.isRoom(room)`, karena `VotingResultCenter` menolak submit dari address yang bukan room resmi factory.
+Expected result di pusat:
 
-Efek:
+```text
+getRoomCount() = 1
+getRoomVersionCount(0xRoomA) = 1
+getLatestVersion(0xRoomA) = 1
+```
 
-- `VotingRoom` menghitung hash histori lewat `getRoundHistoryHash(round)`.
-- `VotingRoom` mengirim ringkasan round, daftar kandidat, jumlah vote, dan hash ke `VotingResultCenter`.
-- `VotingResultCenter` menambah version baru untuk address room tersebut.
-- Event `RoundHistorySubmitted` dan `RoundResultSubmitted` dipancarkan.
+`getRoomVersionCandidates(0xRoomA, 1)`:
 
-Fungsi baca di kontrak pusat:
+```text
+ids = [1, 2]
+names = ["Andi", "Budi"]
+voteCounts = [2, 1]
+```
 
-- `getRoomCount()`: jumlah room yang pernah mengirim histori.
-- `getRooms()`: semua address room yang pernah mengirim histori.
-- `getRoomAt(index)`: address room berdasarkan index.
-- `getRoomAdmin(room)`: admin room yang tercatat saat submit pertama.
-- `getRoomWithAdminAt(index)`: address room dan admin berdasarkan index.
-- `getRoomsWithAdmins()`: semua address room beserta admin masing-masing.
-- `getRoomVersionCount(room)`: berapa kali room tersebut mengirim histori.
-- `getLatestVersion(room)`: version terbaru untuk room.
-- `getRoomVersionSummary(room, version)`: metadata version, termasuk `roundId`, total voter, golput, timestamp, dan `historyHash`.
-- `getRoomVersionCandidates(room, version)`: kandidat dan jumlah vote pada version tersebut.
+## Contoh Kasus: Voter Ditambahkan Saat Voting Berjalan
 
-### 10. Setelah voting selesai: pilih `restart()` atau `reset()`
+Data awal:
 
-Setelah satu round dihentikan, ada dua pilihan:
+- Voter awal:
+  - `0xVoter1`
+  - `0xVoter2`
+- Kandidat:
+  - `1 = Andi`
+  - `2 = Budi`
 
-#### Opsi A: `restart()`
+Alur:
 
-Pakai jika:
+1. Admin memanggil `start()`.
+2. `0xVoter1` vote kandidat 1.
+3. Admin menambahkan voter baru saat room masih `Active`:
 
-- daftar voter tetap sama
-- daftar kandidat tetap sama
-- ingin membuka round baru dengan konfigurasi lama
+```solidity
+VotingRoom.addVoter(0xVoter3)
+```
 
-Efek:
+4. `0xVoter3` vote kandidat 2.
+5. Admin memanggil `stop()`.
 
-- `currentRound += 1`
-- `roundReadyToStart = true`
-- voter dan kandidat tidak dihapus
+Expected result:
 
-Lalu admin bisa memanggil `start()` lagi untuk round berikutnya.
+```text
+totalVoter = 3
+roundTotalVotes = 2
+totalGolput = 1
+```
 
-#### Opsi B: `reset()`
+Catatan:
 
-Pakai jika:
+- `0xVoter3` dihitung sebagai eligible voter round tersebut.
+- `0xVoter2` dihitung golput jika tidak vote.
+- Ini sesuai jika operasional memang mengizinkan daftar pemilih susulan.
 
-- ingin mengosongkan daftar voter
-- ingin mengosongkan daftar kandidat
-- ingin menyiapkan pemilihan baru dari nol
+## EOA / Account Voter di Besu
 
-Efek:
+Untuk direct vote, setiap voter perlu EOA.
 
-- semua voter dihapus
-- semua kandidat dihapus
-- `currentRound += 1`
-- `roundReadyToStart = true`
+Pilihan pembuatan account:
 
-Setelah itu admin perlu input ulang voter dan kandidat sebelum memulai voting lagi.
+1. Voter membuat wallet sendiri, misalnya via MetaMask.
+   - Admin hanya menerima address voter.
+   - Admin mendaftarkan address tersebut dengan `addVoter(address)`.
+   - Ini pilihan paling aman.
 
-## Contoh Skenario Lengkap
+2. Operator membuat account lalu membagikan private key / keystore.
+   - Lebih praktis untuk demo atau internal lab.
+   - Kurang ideal untuk produksi karena operator pernah mengetahui private key voter.
 
-Berikut contoh ringkas satu siklus penuh:
+Yang harus disiapkan:
 
-1. Admin membuat room `Pemilihan Ketua RT 2026` lewat `createRoom()`.
-2. Factory menghasilkan room clone `0xRoomA`.
-3. Admin top up deposit ke `SponsorVault` untuk mendukung gasless vote.
-4. Admin set `maxCostPerVoteWei`.
-5. Admin menambahkan 3 voter.
-6. Admin menambahkan 2 kandidat.
-7. Admin memanggil `start()`.
-8. `Voter1` melakukan gasless vote ke kandidat 1.
-9. `Voter2` melakukan direct vote ke kandidat 2.
-10. `Voter3` melakukan gasless vote ke kandidat 1.
-11. Admin memanggil `stop()`.
-12. Histori round 1 tersimpan.
-13. Hasil akhir round 1:
-    - kandidat 1 = 2 suara
-    - kandidat 2 = 1 suara
-    - golput = 0
-14. Admin memutuskan:
-    - `restart()` jika mau lanjut round 2 dengan peserta/kandidat yang sama
-    - `reset()` jika mau buat pemilihan baru dari nol
-
-## Peran Tiap Komponen
-
-### RoomFactory
-
-Tugas:
-
-- membuat room clone baru
-- menetapkan admin room
-- menyimpan daftar room valid
-- meneruskan registration fee ke vault
-
-### VotingRoom
-
-Tugas:
-
-- menyimpan voter dan kandidat
-- mengatur start/stop round
-- menerima vote
-- menyimpan histori hasil round
-- menjadi titik validasi utama logic voting
-
-### SponsorVault
-
-Tugas:
-
-- menerima registration fee
-- menyimpan deposit ETH per room
-- membayar relayer setelah gasless vote berhasil
-- memproses withdraw deposit oleh room saat tidak aktif
-
-### MinimalForwarder + Relayer
-
-Tugas:
-
-- memfasilitasi vote tanpa voter membayar gas langsung
-- memverifikasi signature meta-tx
-- mengeksekusi `vote()` atas nama voter
-- menagih reimbursement ke vault
-
-## Batasan Sistem Saat Ini
-
-Beberapa batasan penting pada implementasi saat ini:
-
-- Vote berbobot/credit tidak dipakai lagi.
-- Pemenang tidak ditentukan otomatis oleh contract.
-- Gasless hanya untuk `vote()`, bukan operasi admin.
-- `getRoomsByVoter()` di factory melakukan loop semua room, jadi kurang cocok untuk skala besar.
-- Histori round disimpan saat `stop()`, jadi kalau round belum dihentikan maka hasil final round belum dibekukan ke histori.
+- RPC private Besu.
+- Chain ID Besu.
+- Native coin Besu untuk gas pada setiap voter.
+- Address voter didaftarkan ke room.
 
 ## Kesimpulan
 
-Secara operasional, flow sistem saat ini adalah:
+Flow terbaru:
 
-1. Buat room lewat `RoomFactory`
-2. Simpan address room clone
-3. Setup voter dan kandidat di `VotingRoom`
-4. Top up deposit jika ingin gasless vote
-5. Mulai voting dengan `start()`
-6. Voter melakukan `vote()` secara direct atau gasless
-7. Akhiri voting dengan `stop()`
-8. Baca histori hasil round
-9. Lanjut dengan `restart()` atau `reset()`
+1. Deploy `VotingRoom` implementation.
+2. Deploy `RoomFactory`.
+3. Deploy `VotingResultCenter`.
+4. Admin buat room gratis lewat `createRoom()`.
+5. Admin set result center.
+6. Admin setup voter dan kandidat.
+7. Admin start voting.
+8. Voter direct vote dari EOA masing-masing.
+9. Admin stop voting.
+10. Admin submit histori round ke pusat.
+11. Pusat menyimpan hasil dengan versioning per room.
 
-Kalau diinginkan, dokumen ini bisa saya lanjutkan jadi versi yang lebih teknis juga, misalnya ditambah:
-
-- sequence diagram per aktor
-- mapping tombol UI ke function contract
-- contoh call function per langkah
-- tabel state transition room
