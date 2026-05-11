@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { decodeEventLog } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { CONTRACTS, CHAIN_ID, CHAIN_NAME, assertIsRoomClone } from "./config/contracts.js";
@@ -63,6 +63,12 @@ function FnCard({ contractName, customRoomAddr, fn, onCall, onSend }) {
 
     const read = isReadFn(fn);
     const hasInputs = (fn.inputs || []).length > 0;
+    const inputSignature = (fn.inputs || []).map((input) => `${input.name}:${input.type}`).join("|");
+
+    useEffect(() => {
+        setArgs((fn.inputs || []).map(() => ""));
+        setValueWei("0");
+    }, [contractName, fn.name, inputSignature]);
 
     return (
         <div className="fnCard">
@@ -82,7 +88,13 @@ function FnCard({ contractName, customRoomAddr, fn, onCall, onSend }) {
                                 key={`${fn.name}-${index}`}
                                 label={`${input.name || `arg${index}`} (${input.type})`}
                                 value={args[index]}
-                                onChange={(value) => setArgs((prev) => prev.map((item, itemIndex) => (itemIndex === index ? value : item)))}
+                                onChange={(value) =>
+                                    setArgs((prev) => {
+                                        const next = [...prev];
+                                        next[index] = value;
+                                        return next;
+                                    })
+                                }
                                 placeholder={getInputPlaceholder(contractName, fn, input, index, customRoomAddr)}
                             />
                         ))}
@@ -294,7 +306,7 @@ export default function App() {
                         <div className="sectionTitle">Read / Variables</div>
                         {readFns.map((fn) => (
                             <FnCard
-                                key={fn.name}
+                                key={`${selected}:read:${fn.name}:${(fn.inputs || []).map((input) => input.type).join(",")}`}
                                 contractName={selected}
                                 customRoomAddr={customRoomAddr}
                                 fn={fn}
@@ -306,7 +318,7 @@ export default function App() {
                         <div className="sectionTitle">Write / Transactions</div>
                         {writeFns.map((fn) => (
                             <FnCard
-                                key={fn.name}
+                                key={`${selected}:write:${fn.name}:${(fn.inputs || []).map((input) => input.type).join(",")}`}
                                 contractName={selected}
                                 customRoomAddr={customRoomAddr}
                                 fn={fn}
