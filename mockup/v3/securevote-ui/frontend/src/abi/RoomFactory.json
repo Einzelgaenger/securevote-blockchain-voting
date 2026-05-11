@@ -5,16 +5,6 @@
 				"internalType": "address",
 				"name": "_votingRoomImplementation",
 				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_sponsorVault",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_trustedForwarder",
-				"type": "address"
 			}
 		],
 		"stateMutability": "nonpayable",
@@ -39,11 +29,6 @@
 			}
 		],
 		"name": "InsufficientBalance",
-		"type": "error"
-	},
-	{
-		"inputs": [],
-		"name": "InsufficientRegistrationFee",
 		"type": "error"
 	},
 	{
@@ -75,7 +60,7 @@
 	},
 	{
 		"inputs": [],
-		"name": "TransferFailed",
+		"name": "ZeroAddress",
 		"type": "error"
 	},
 	{
@@ -111,12 +96,6 @@
 				"internalType": "address",
 				"name": "admin",
 				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "feePaid",
-				"type": "uint256"
 			},
 			{
 				"indexed": false,
@@ -163,7 +142,7 @@
 				"type": "address"
 			}
 		],
-		"stateMutability": "payable",
+		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
@@ -295,19 +274,6 @@
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "sponsorVault",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
 		"inputs": [
 			{
 				"internalType": "address",
@@ -318,19 +284,6 @@
 		"name": "transferOwnership",
 		"outputs": [],
 		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "trustedForwarder",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
 		"type": "function"
 	},
 	{

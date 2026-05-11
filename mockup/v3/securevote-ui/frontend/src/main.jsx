@@ -9,16 +9,35 @@ import App from "./App.jsx";
 import "./styles.css";
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-const sepoliaRpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
+const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID || sepolia.id);
+const configuredChainName = import.meta.env.VITE_CHAIN_NAME || sepolia.name;
+const configuredRpcUrl = import.meta.env.VITE_RPC_URL || import.meta.env.VITE_SEPOLIA_RPC_URL;
+
+const appChain =
+    configuredChainId === sepolia.id
+        ? sepolia
+        : {
+              id: configuredChainId,
+              name: configuredChainName,
+              nativeCurrency: {
+                  name: import.meta.env.VITE_NATIVE_CURRENCY_NAME || "Ether",
+                  symbol: import.meta.env.VITE_NATIVE_CURRENCY_SYMBOL || "ETH",
+                  decimals: 18,
+              },
+              rpcUrls: {
+                  default: { http: [configuredRpcUrl] },
+                  public: { http: [configuredRpcUrl] },
+              },
+          };
 
 const config = getDefaultConfig({
     appName: "SecureVote UI",
     projectId,
-    chains: [sepolia],
+    chains: [appChain],
     transports: {
-        [sepolia.id]: http(sepoliaRpcUrl || undefined),
+        [appChain.id]: http(configuredRpcUrl || undefined),
     },
-    ssr: false
+    ssr: false,
 });
 
 const queryClient = new QueryClient();
@@ -28,14 +47,14 @@ function Shell() {
         <div className="page">
             <header className="topbar">
                 <div>
-                    <div className="title">SecureVote Remix-like UI</div>
-                    <div className="subtitle">Sepolia • Gasless only for VotingRoom.vote()</div>
+                    <div className="title">SecureVote v2 UI</div>
+                    <div className="subtitle">{appChain.name} - direct vote via wallet</div>
                 </div>
                 <ConnectButton />
             </header>
             <App />
             <footer className="footer">
-                <span>Forwarder meta-tx + relayer backend</span>
+                <span>RoomFactory + VotingRoom + VotingResultCenter</span>
             </footer>
         </div>
     );

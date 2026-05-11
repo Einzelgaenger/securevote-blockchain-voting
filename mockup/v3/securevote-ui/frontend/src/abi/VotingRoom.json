@@ -1,16 +1,5 @@
 [
 	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "trustedForwarder",
-				"type": "address"
-			}
-		],
-		"stateMutability": "nonpayable",
-		"type": "constructor"
-	},
-	{
 		"inputs": [],
 		"name": "AlreadyInitialized",
 		"type": "error"
@@ -106,28 +95,28 @@
 	},
 	{
 		"inputs": [],
+		"name": "ResultCenterNotConfigured",
+		"type": "error"
+	},
+	{
+		"inputs": [],
 		"name": "RoundAlreadyPrepared",
-		"type": "error"
-	},
-	{
-		"inputs": [],
-		"name": "RoundNotReady",
-		"type": "error"
-	},
-	{
-		"inputs": [],
-		"name": "TransferToAdminFailed",
 		"type": "error"
 	},
 	{
 		"inputs": [
 			{
-				"internalType": "bytes",
-				"name": "returnData",
-				"type": "bytes"
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
 			}
 		],
-		"name": "VaultWithdrawalFailed",
+		"name": "RoundHistoryNotSaved",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "RoundNotReady",
 		"type": "error"
 	},
 	{
@@ -205,19 +194,19 @@
 				"type": "address"
 			},
 			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "oldCost",
-				"type": "uint256"
+				"indexed": true,
+				"internalType": "address",
+				"name": "oldCenter",
+				"type": "address"
 			},
 			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "newCost",
-				"type": "uint256"
+				"indexed": true,
+				"internalType": "address",
+				"name": "newCenter",
+				"type": "address"
 			}
 		],
-		"name": "MaxCostUpdated",
+		"name": "ResultCenterUpdated",
 		"type": "event"
 	},
 	{
@@ -256,6 +245,43 @@
 			}
 		],
 		"name": "RoomReset",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "room",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "version",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "historyHash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "resultCenter",
+				"type": "address"
+			}
+		],
+		"name": "RoundHistorySubmitted",
 		"type": "event"
 	},
 	{
@@ -672,6 +698,25 @@
 		"type": "function"
 	},
 	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
+			}
+		],
+		"name": "getRoundHistoryHash",
+		"outputs": [
+			{
+				"internalType": "bytes32",
+				"name": "",
+				"type": "bytes32"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
 		"inputs": [],
 		"name": "getVoterCount",
 		"outputs": [
@@ -732,16 +777,6 @@
 				"internalType": "string",
 				"name": "_roomName",
 				"type": "string"
-			},
-			{
-				"internalType": "address",
-				"name": "_sponsorVault",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_trustedForwarder",
-				"type": "address"
 			}
 		],
 		"name": "initialize",
@@ -785,25 +820,6 @@
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "forwarder",
-				"type": "address"
-			}
-		],
-		"name": "isTrustedForwarder",
-		"outputs": [
-			{
-				"internalType": "bool",
-				"name": "",
-				"type": "bool"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
 				"name": "voter",
 				"type": "address"
 			}
@@ -832,19 +848,6 @@
 			{
 				"internalType": "uint256",
 				"name": "round",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "maxCostPerVoteWei",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
 				"type": "uint256"
 			}
 		],
@@ -903,6 +906,19 @@
 		"name": "restart",
 		"outputs": [],
 		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "resultCenter",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
@@ -1009,27 +1025,14 @@
 	{
 		"inputs": [
 			{
-				"internalType": "uint256",
-				"name": "newCost",
-				"type": "uint256"
-			}
-		],
-		"name": "setMaxCostPerVote",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "sponsorVault",
-		"outputs": [
-			{
 				"internalType": "address",
-				"name": "",
+				"name": "newCenter",
 				"type": "address"
 			}
 		],
-		"stateMutability": "view",
+		"name": "setResultCenter",
+		"outputs": [],
+		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
@@ -1060,16 +1063,22 @@
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "trustedForwarder",
-		"outputs": [
+		"inputs": [
 			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
+				"internalType": "uint256",
+				"name": "round",
+				"type": "uint256"
 			}
 		],
-		"stateMutability": "view",
+		"name": "submitRoundHistory",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "version",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
@@ -1084,22 +1093,5 @@
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "withdrawDeposit",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"stateMutability": "payable",
-		"type": "receive"
 	}
 ]

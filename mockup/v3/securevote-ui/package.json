@@ -2,16 +2,11 @@
     "name": "securevote-ui-monorepo",
     "private": true,
     "workspaces": [
-        "frontend",
-        "relayer"
+        "frontend"
     ],
     "scripts": {
-        "dev": "concurrently -n FRONTEND,RELAYER -c blue,green \"npm:dev:frontend\" \"npm:dev:relayer\"",
+        "dev": "npm run dev:frontend",
         "dev:frontend": "npm -w frontend run dev",
-        "dev:relayer": "npm -w relayer run dev",
         "install:all": "npm install"
-    },
-    "devDependencies": {
-        "concurrently": "^9.0.1"
     }
 }
