@@ -147,6 +147,9 @@ export default function App() {
     return (
         <>
             <div className="modeBar">
+                <button className={`pill ${mode === "voter" ? "active" : ""}`} onClick={() => setMode("voter")}>
+                    Voter Booth
+                </button>
                 <button className={`pill ${mode === "dashboard" ? "active" : ""}`} onClick={() => setMode("dashboard")}>
                     Public Audit Dashboard
                 </button>
@@ -155,7 +158,15 @@ export default function App() {
                 </button>
             </div>
 
-            {mode === "dashboard" ? (
+            {mode === "voter" ? (
+                <VoterBooth
+                    address={address}
+                    chain={chain}
+                    isConnected={isConnected}
+                    publicClient={publicClient}
+                    walletClient={walletClient}
+                />
+            ) : mode === "dashboard" ? (
                 <PublicAuditDashboard publicClient={publicClient} />
             ) : !isConnected ? (
                 <div className="card">
@@ -390,6 +401,201 @@ function ContractConsole({
                             </div>
                         ))
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function VoterBooth({ address, chain, isConnected, publicClient, walletClient }) {
+    const [roomAddress, setRoomAddress] = useState("");
+    const [roomInfo, setRoomInfo] = useState(null);
+    const [selectedCandidate, setSelectedCandidate] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [voting, setVoting] = useState(false);
+    const [message, setMessage] = useState("");
+
+    async function loadRoom() {
+        try {
+            if (!publicClient) throw new Error("Public client not ready");
+            if (!isEthAddress(roomAddress)) throw new Error("Room address tidak valid");
+
+            setLoading(true);
+            setMessage("");
+            setSelectedCandidate(null);
+
+            const normalizedRoom = roomAddress.trim();
+            const [isRoom, name, status, candidates, voterCount] = await Promise.all([
+                safeRead(publicClient, CONTRACTS.RoomFactory.address, CONTRACTS.RoomFactory.abi, "isRoom", [normalizedRoom]),
+                safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "roomName", []),
+                safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "getCurrentRoundStatus", []),
+                safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "getCandidates", []),
+                safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "getVoterCount", []),
+            ]);
+
+            if (!isRoom) {
+                throw new Error("Address ini bukan room resmi dari RoomFactory aktif");
+            }
+
+            let eligible = null;
+            let lastVotedRound = null;
+            if (address) {
+                [eligible, lastVotedRound] = await Promise.all([
+                    safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "isVoterEligible", [address]),
+                    safeRead(publicClient, normalizedRoom, CONTRACTS.VotingRoom.abi, "lastVotedRound", [address]),
+                ]);
+            }
+
+            setRoomInfo({
+                address: normalizedRoom,
+                name: name || "(room name unavailable)",
+                status,
+                voterCount: voterCount ?? 0n,
+                candidates: formatCandidates(candidates),
+                eligible,
+                lastVotedRound,
+            });
+        } catch (err) {
+            setRoomInfo(null);
+            setMessage(err.shortMessage || err.message || "Gagal membaca room");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function submitVote() {
+        try {
+            if (!walletClient) throw new Error("Connect wallet voter dulu");
+            if (chain?.id !== CHAIN_ID) throw new Error(`Please switch to ${CHAIN_NAME} (${CHAIN_ID})`);
+            if (!roomInfo?.address) throw new Error("Load room dulu");
+            if (!selectedCandidate) throw new Error("Pilih kandidat dulu");
+
+            setVoting(true);
+            setMessage("");
+
+            const hash = await walletClient.writeContract({
+                address: roomInfo.address,
+                abi: CONTRACTS.VotingRoom.abi,
+                functionName: "vote",
+                args: [BigInt(selectedCandidate.id)],
+                chain,
+            });
+
+            const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") throw new Error("Transaksi vote gagal");
+
+            setMessage("Vote berhasil dikirim.");
+            setRoomInfo((prev) => (prev ? { ...prev, hasJustVoted: true } : prev));
+            window.setTimeout(() => {
+                setMessage("");
+            }, 5000);
+        } catch (err) {
+            setMessage(err.shortMessage || err.message || "Vote gagal");
+        } finally {
+            setVoting(false);
+        }
+    }
+
+    const status = normalizeRoomStatus(roomInfo?.status);
+    const hasVotedThisRound =
+        roomInfo?.lastVotedRound != null &&
+        roomInfo?.status?.[0] != null &&
+        BigInt(roomInfo.lastVotedRound) === BigInt(roomInfo.status[0]);
+    const canVote = isConnected && roomInfo && status.stateLabel === "Active" && roomInfo.eligible === true && !hasVotedThisRound && !roomInfo.hasJustVoted;
+
+    return (
+        <div className="voterBooth">
+            <div className="dashboardHeader">
+                <div>
+                    <div className="panelTitle">Voter Booth</div>
+                    <div className="hint">Masukkan room address, pilih kandidat, lalu kirim vote dari wallet voter yang sedang connect.</div>
+                </div>
+                <div className="mono small">{isConnected ? `Voter: ${address}` : "Wallet belum connect"}</div>
+            </div>
+
+            <div className="voterSearch">
+                <input
+                    className="input"
+                    value={roomAddress}
+                    onChange={(event) => setRoomAddress(event.target.value)}
+                    placeholder="0x... room clone address"
+                />
+                <button className="btn action refreshBtn" onClick={loadRoom} disabled={loading}>
+                    {loading ? "Loading..." : "Load Room"}
+                </button>
+            </div>
+
+            {message && <div className={message.toLowerCase().includes("berhasil") ? "successBox" : "errorBox"}>{message}</div>}
+
+            {roomInfo && (
+                <div className="votePanel">
+                    <div className="roomHeader">
+                        <div>
+                            <div className="roomName">{roomInfo.name}</div>
+                            <div className="mono small">{roomInfo.address}</div>
+                        </div>
+                        <div className={`statusPill ${status.stateClass}`}>{status.stateLabel}</div>
+                    </div>
+
+                    <div className="roomFacts voterFacts">
+                        <div>
+                            <div className="label">Current Round</div>
+                            <div className="factValue">{status.roundId}</div>
+                        </div>
+                        <div>
+                            <div className="label">Eligibility</div>
+                            <div className="factValue">{roomInfo.eligible == null ? "-" : roomInfo.eligible ? "Eligible" : "Not eligible"}</div>
+                        </div>
+                        <div>
+                            <div className="label">Vote Status</div>
+                            <div className="factValue">{hasVotedThisRound || roomInfo.hasJustVoted ? "Done" : "Open"}</div>
+                        </div>
+                    </div>
+
+                    {!isConnected && <div className="emptyState">Connect wallet voter untuk mengirim vote.</div>}
+                    {status.stateLabel !== "Active" && <div className="emptyState">Room belum aktif untuk voting.</div>}
+                    {isConnected && roomInfo.eligible === false && <div className="emptyState">Address wallet ini belum terdaftar sebagai voter di room ini.</div>}
+                    {(hasVotedThisRound || roomInfo.hasJustVoted) && <div className="successBox">Vote untuk round ini sudah tercatat.</div>}
+
+                    {canVote && (
+                        <>
+                            <div className={`candidateVoteGrid ${selectedCandidate ? "hasSelection" : ""}`}>
+                                {roomInfo.candidates.map((candidate) => {
+                                    const selected = selectedCandidate?.id === candidate.id;
+                                    return (
+                                        <button
+                                            key={candidate.id}
+                                            className={`candidateVoteCard ${selected ? "selected" : ""}`}
+                                            onClick={() => setSelectedCandidate(candidate)}
+                                        >
+                                            <div className="candidateId">#{candidate.id}</div>
+                                            <div className="candidateVoteName">{candidate.name}</div>
+                                            {selected && <div className="checkMark">✓</div>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {selectedCandidate && (
+                                <div className="voteConfirm">
+                                    <button className="btn action" onClick={submitVote} disabled={voting}>
+                                        {voting ? "Submitting..." : `Confirm Vote: ${selectedCandidate.name}`}
+                                    </button>
+                                    <button className="btn read" onClick={() => setSelectedCandidate(null)} disabled={voting}>
+                                        Change Selection
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
+
+            <div className="organizerNote">
+                <div className="cardTitle">Switch Voter</div>
+                <div className="cardBody">
+                    Pergantian voter dilakukan dengan switch account di wallet atau disconnect lalu connect wallet voter lain.
+                    Admin hanya perlu mendaftarkan address voter dan memastikan tiap voter punya native coin untuk gas.
                 </div>
             </div>
         </div>
@@ -677,6 +883,22 @@ function formatUnix(value) {
     const seconds = Number(value);
     if (!seconds) return "-";
     return new Date(seconds * 1000).toLocaleString();
+}
+
+function formatCandidates(candidates) {
+    if (!candidates) return [];
+
+    const ids = candidates[0] || [];
+    const names = candidates[1] || [];
+
+    return ids.map((id, index) => ({
+        id: stringifyNumberish(id),
+        name: names[index] || `(candidate ${stringifyNumberish(id)})`,
+    }));
+}
+
+function isEthAddress(value) {
+    return /^0x[0-9a-fA-F]{40}$/.test(String(value).trim());
 }
 
 function coerceScalar(value) {
