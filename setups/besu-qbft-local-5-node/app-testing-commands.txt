@@ -1,0 +1,112 @@
+SecureVote App Testing Commands With Besu 5 Node Local
+
+File ini hanya command integrasi app. Jalankan app dari APP_DIR, bukan dari folder Besu.
+
+============================================================
+1. Set variable path
+============================================================
+
+$AppDir = "C:\path\to\securevote-ui"
+$BesuDir = "C:\path\to\besu-qbft-local-5-node"
+
+============================================================
+2. Copy testing EOA dari app ke folder Besu
+============================================================
+
+Copy-Item -Force "$AppDir\evaluation\data\testing-eoas.json" "$BesuDir\testing-eoas.json"
+
+cd $BesuDir
+.\setup-5-node-besu-qbft.ps1 -TestingEoaFile ".\testing-eoas.json" -Reset
+docker compose up -d
+.\check-network.ps1
+
+============================================================
+3. Update frontend env di app
+============================================================
+
+cd $AppDir
+
+@"
+VITE_CHAIN_ID=1337
+VITE_CHAIN_NAME=Besu QBFT Local 5 Node
+VITE_RPC_URL=http://127.0.0.1:8545
+VITE_NATIVE_CURRENCY_NAME=Ether
+VITE_NATIVE_CURRENCY_SYMBOL=ETH
+VITE_WALLETCONNECT_PROJECT_ID=
+VITE_ROOM_FACTORY_ADDRESS=
+VITE_VOTING_ROOM_ADDRESS=
+VITE_VOTING_RESULT_CENTER_ADDRESS=
+"@ | Out-File -Encoding ascii ".\frontend\.env"
+
+============================================================
+4. Update evaluation env di app
+============================================================
+
+Ambil private key dari:
+
+$BesuDir\testing-eoas.json
+
+Lalu isi ADMIN_PRIVATE_KEY:
+
+@"
+RPC_URL=http://127.0.0.1:8545
+CHAIN_ID=1337
+ADMIN_PRIVATE_KEY=0xPRIVATE_KEY_DARI_TESTING_EOAS
+TEST_EOA_COUNT=30
+VOTER_COUNT=30
+CANDIDATE_COUNT=3
+FAULT_TOLERANCE_MANUAL=false
+"@ | Out-File -Encoding ascii ".\evaluation\.env"
+
+============================================================
+5. Deploy contracts
+============================================================
+
+Deploy ke:
+
+RPC URL: http://127.0.0.1:8545
+Chain ID: 1337
+
+Source contracts:
+
+contracts\v2\VotingRoom.sol
+contracts\v2\RoomFactory.sol
+contracts\v2\VotingResultCenter.sol
+
+Urutan deploy:
+
+1. VotingRoom
+2. RoomFactory(VotingRoom address)
+3. VotingResultCenter(RoomFactory address)
+
+Setelah deploy, update:
+
+$AppDir\frontend\src\config\deployed-contracts.json
+
+============================================================
+6. Run frontend
+============================================================
+
+cd $AppDir\frontend
+npm install
+npm run dev
+
+============================================================
+7. Run automated evaluation
+============================================================
+
+cd $AppDir\evaluation
+npm install
+npm run network
+npm run smart-contract
+
+============================================================
+8. Result locations
+============================================================
+
+Besu network check:
+$BesuDir\results\
+
+SecureVote evaluation:
+$AppDir\evaluation\results\
+

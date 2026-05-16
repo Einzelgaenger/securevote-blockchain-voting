@@ -1,0 +1,135 @@
+Besu QBFT Local 5 Node - Windows PowerShell Commands
+
+Prerequisite:
+- Docker Desktop sudah running.
+- Jalankan command dari folder ini.
+
+============================================================
+1. Check Docker
+============================================================
+
+docker --version
+docker compose version
+
+============================================================
+2. Allow PowerShell Script For Current Session
+============================================================
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+============================================================
+3. Optional: Copy testing-eoas.json dari app SecureVote
+============================================================
+
+$AppDir = "C:\path\to\securevote-ui"
+Copy-Item -Force "$AppDir\evaluation\data\testing-eoas.json" ".\testing-eoas.json"
+
+============================================================
+4. Generate 5 Node Besu QBFT Network
+============================================================
+
+Tanpa testing-eoas.json:
+
+.\setup-5-node-besu-qbft.ps1 -Reset
+
+Dengan testing-eoas.json:
+
+.\setup-5-node-besu-qbft.ps1 -TestingEoaFile ".\testing-eoas.json" -Reset
+
+============================================================
+5. Jalankan Private Blockchain
+============================================================
+
+docker compose up -d
+
+============================================================
+6. Check Container
+============================================================
+
+docker ps
+docker compose ps
+
+============================================================
+7. Lihat Log
+============================================================
+
+docker logs -f besu-node1
+
+============================================================
+8. Check Network Otomatis
+============================================================
+
+.\check-network.ps1
+
+Hasil disimpan ke:
+
+results\network-check-[timestamp].txt
+
+============================================================
+9. Check RPC Manual
+============================================================
+
+Invoke-RestMethod -Uri http://localhost:8545 -Method Post -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+
+Invoke-RestMethod -Uri http://localhost:8545 -Method Post -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}'
+
+Invoke-RestMethod -Uri http://localhost:8545 -Method Post -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+
+Invoke-RestMethod -Uri http://localhost:8545 -Method Post -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"qbft_getValidatorsByBlockNumber","params":["latest"],"id":1}'
+
+Expected:
+- eth_chainId = 0x539
+- net_peerCount node1 sekitar 0x4
+- eth_blockNumber naik setiap sekitar 2 detik
+- validators = 5 address
+
+============================================================
+10. Fault Tolerance Test
+============================================================
+
+.\fault-tolerance-test.ps1
+
+Hasil disimpan ke:
+
+results\fault-tolerance-[timestamp].txt
+
+Optional test stop 2 validators:
+
+.\fault-tolerance-test.ps1 -RunTwoNodeFailure
+
+Catatan:
+- 5 node QBFT normalnya toleran 1 faulty validator.
+- Jika 2 validator mati, finality kemungkinan berhenti.
+
+============================================================
+11. MetaMask
+============================================================
+
+Network Name: Besu QBFT Local 5 Node
+RPC URL: http://127.0.0.1:8545
+Chain ID: 1337
+Currency Symbol: ETH
+Block Explorer: kosongkan
+
+Private key local dev tersedia di:
+
+prefunded-accounts.txt
+
+============================================================
+12. Stop Network
+============================================================
+
+docker compose down
+
+============================================================
+13. Reset Chain Dari Nol
+============================================================
+
+docker compose down
+.\setup-5-node-besu-qbft.ps1 -TestingEoaFile ".\testing-eoas.json" -Reset
+docker compose up -d
+.\check-network.ps1
+
+Setelah reset chain, semua contract address lama tidak valid.
+Deploy ulang contract dan update config app.
+

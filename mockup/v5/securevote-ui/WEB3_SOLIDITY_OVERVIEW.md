@@ -1,8 +1,27 @@
 # WEB3 / SOLIDITY OVERVIEW
 
-Dokumen ini menjelaskan flow Web3 terbaru untuk `mockup/v3/securevote-ui`.
+Dokumen ini menjelaskan flow Web3 terbaru untuk `mockup/v5/securevote-ui`.
 
-Versi terbaru memakai **direct vote** di private network Besu. Voter memanggil `vote()` langsung dari EOA masing-masing, sehingga sistem tidak lagi memakai reimbursement relayer, deposit room, `SponsorVault`, atau `MinimalForwarder`.
+Versi terbaru memakai **direct vote** di private network Besu QBFT lokal. Voter memanggil `vote()` langsung dari EOA masing-masing, sehingga sistem tidak lagi memakai reimbursement relayer, deposit room, `SponsorVault`, atau `MinimalForwarder`.
+
+## Setup Lokal Yang Dipakai v5
+
+Untuk menjalankan flow ini dari nol:
+
+1. Generate `evaluation\data\testing-eoas.json`.
+2. Setup Besu QBFT lokal dari folder khusus `setups\besu-qbft-local-5-node`.
+3. Jalankan Besu lokal dengan `docker compose up -d`.
+4. Deploy `VotingRoom`, `RoomFactory`, dan `VotingResultCenter` ke `http://127.0.0.1:8545`.
+5. Update `frontend\src\config\deployed-contracts.json`.
+6. Jalankan frontend dan evaluation scripts.
+
+Detail command ada di folder setup pada repo root:
+
+```txt
+setups\besu-qbft-local-5-node\README.md
+setups\besu-qbft-local-5-node\commands.txt
+setups\besu-qbft-local-5-node\app-testing-commands.txt
+```
 
 ## Kontrak yang Dipakai
 

@@ -1,0 +1,111 @@
+Besu QBFT Local 5 Node - Expected Results Template
+
+Date:
+Machine:
+Docker Desktop version:
+Besu image:
+
+============================================================
+Network Setup
+============================================================
+
+Command:
+.\setup-5-node-besu-qbft.ps1 -TestingEoaFile ".\testing-eoas.json" -Reset
+docker compose up -d
+
+Expected:
+- 5 containers started: besu-node1..besu-node5
+- RPC node1 exposed on http://127.0.0.1:8545
+- Chain ID 1337 / 0x539
+
+Actual:
+
+Status:
+
+============================================================
+Network Check
+============================================================
+
+Command:
+.\check-network.ps1
+
+Expected:
+- eth_chainId: 0x539
+- net_peerCount: about 0x4
+- block delta after 10 seconds: > 0
+- validator count: 5
+
+Actual:
+
+Result file:
+
+Status:
+
+============================================================
+Fault Tolerance - Stop 1 Validator
+============================================================
+
+Command:
+.\fault-tolerance-test.ps1
+
+Expected:
+- block still increases after besu-node5 is stopped
+- stopped validator is restarted by script
+
+Actual:
+
+Result file:
+
+Status:
+
+============================================================
+Fault Tolerance - Stop 2 Validators
+============================================================
+
+Command:
+.\fault-tolerance-test.ps1 -RunTwoNodeFailure
+
+Expected:
+- network likely stops finalizing or becomes unstable with 2 validators down
+- validators are restarted by script
+
+Actual:
+
+Result file:
+
+Status:
+
+============================================================
+SecureVote App
+============================================================
+
+Expected:
+- frontend can connect to MetaMask on Chain ID 1337
+- admin can create room
+- admin can add voters/candidates
+- voters can vote
+- admin can stop and submit history
+- public audit/result center shows version history
+
+Actual:
+
+Status:
+
+============================================================
+Automated Evaluation
+============================================================
+
+Commands:
+npm run network
+npm run smart-contract
+
+Expected:
+- network evaluation creates result JSON
+- smart contract evaluation creates result JSON
+
+Actual:
+
+Result files:
+
+Status:
+
