@@ -14,7 +14,16 @@ Run on the droplet:
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io docker-compose-plugin ufw jq
+sudo apt install -y ca-certificates curl gnupg ufw jq
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo ufw allow OpenSSH
 sudo ufw allow 8545/tcp
@@ -23,6 +32,29 @@ sudo ufw allow 30303/tcp
 sudo ufw allow 30303/udp
 sudo ufw --force enable
 ```
+
+If you already ran `sudo apt install -y docker.io docker-compose-plugin ufw jq` and got:
+
+```txt
+E: Unable to locate package docker-compose-plugin
+```
+
+that means the default Ubuntu repository on the droplet does not provide the Compose v2 plugin package. Use the Docker official apt repository commands above, then verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+Fallback if you only want the Ubuntu repository packages:
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose ufw jq
+sudo systemctl enable --now docker
+```
+
+With this fallback, use `docker-compose` instead of `docker compose` in later commands.
 
 ## 2. Folder layout
 
