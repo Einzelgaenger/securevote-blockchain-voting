@@ -12,7 +12,8 @@ This folder is copied from `mockup/v4/securevote-ui` and changed to target a Bes
 
 ## Local PC Requirements
 
-- Docker Desktop on Windows, or Docker Engine inside WSL/Linux.
+- Windows CMD or PowerShell.
+- Docker Desktop on Windows.
 - Recommended RAM: 8 GB or more.
 - Free ports:
   - `8545` for RPC
@@ -26,10 +27,17 @@ Read:
 docs/besu-qbft-local-setup.md
 ```
 
-The local Besu working directory should be outside this UI folder, for example:
+By default, the portable script creates a local Besu working directory named:
 
 ```txt
-C:\Users\LEGION\Documents\Binus\Thesis\besu-qbft-local\securevote-besu-qbft
+.\besu-qbft-local
+```
+
+Portable files for another repository:
+
+```txt
+local-besu/setup-besu-qbft-local.ps1
+local-besu/PORTABLE_SCRIPT_USAGE.md
 ```
 
 ## Update Contract Addresses
