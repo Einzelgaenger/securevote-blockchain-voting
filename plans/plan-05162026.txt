@@ -1,0 +1,48 @@
+SETUP QBFT BESU DI REMOTE SERVER, COPY FILES, BUAT SCRIPT TESTING
+
+
+rencana next stepnya yaitu copy code 05162026\securevote-blockchain-voting\mockup\v3\securevote-ui ke folder baru (buatkan foldernya) 05162026\securevote-blockchain-voting\mockup\v4\securevote-ui
+
+Kemudian buatkan agar compatible (terhubung) dengan alih-alih ke sepolia network, alihkan ke private besu qbft network
+Aku ada server Droplet Fabio : 165.227.107.109
+Tolong buatkan file .md nya untuk setup qbft besu network ini
+Aku ingin ada 5 nodes dan buatkan agar accessible
+
+Jadi nanti sistemnya menggunakan onchain besu tersebut
+Buatkan juga agar menyimpan 30 testing EOA (atau maximal jumlah EOA testing yang diberikan hardhat) yang bisa dikoneksikan juga ke remix
+
+Jadi secara solidity dan frontend semua sama namun bedanya pakai besu network tersebut
+
+Dan bahkan next stepnya aku ingin dibuatkan script untuk mencoba seperti:
+
+1. Network evaluation:
+- Network connectivity test
+- Block production test
+- Validator verification test
+- Smart contract deployment test
+- Vote transaction test
+- Latency measurement
+- Fault tolerance test (terhubung dengan smart contract evaluation, bagaimana jika 1 atau lebih node dimatikan, apakah masih bisa transaksi dan berapa waktunya (latency))
+
+2. Smart contract evaluation:
+- vote transaction
+- vote latency
+- testing jika 30 (atau jumlah max EOA yang disediakan) EOA vote bersamaan sekaligus, gimana latency hasilnya
+
+
+
+Untuk kedua testing tersebut, masing-masing buatkan cara kerja dan langkahnya juga pada file md yang terpisah
+Selain dibuatkan script agar bisa jalan otomatis testingnya, buatkan agar bisa menyimpan hasilnya ke suatu folder result dengan format network-evaluation-result-[ddmmyyyy] dan smart-contract-evaluation-result-[ddmmyyyy]
+
+Pertanyaan:
+Untuk smart contract evaluation ini apakah butuh user input untuk memasukkan room addressnya atau akan buat otomatis?
+Karena system saat ini kan bisa selalu reuse room, apakah perlu dibuatkan sekali saja suatu room untuk testing lalu gunakan address dari room tersebut agar digunakan terus untuk testing?
+dengan gunakan sautu address sebagai room admin dan masukkan semua EOA termasuk admin sebagai voter dan masukkan 3 atau sesuaikan jumlah EOA agar imbang (contoh: 30 EOA = 3 voter, 20 EOA = 2 voter, 5 EOA = 25 voter, intinya agar bisa dibagi rata, masing-masing candidate mendapatkan jumlah suara yang sama)
+Jadi Ketika sudah testing voting bakal otomatis stop dan restart, agar jika script dijalankan lagi bakal start lagi dan voting dan stop dan restart
+
+Namun buatkan juga agar kita bisa pilih misal lewat terminal apakah ingin pakai saved room address dengan menampilkan room address dan nama room atau buat baru, jika buat baru maka kita perlu masukkan room addressnya dan script akan pastikan room siap pakai, dengan kondisi room bisa tinggal start dan script memasukkan semua EOA ke dalamnya jika sudah ada yang pernah dimasukkan maka skip dan lanjut ke EOA berikutnya dan seterusnya
+Oh ya cek juga room admin siapa dan gunakan EOA tersebut untuk add voter candidates, and more
+dan save room address tersebut sebagai saved room address
+Jika belum pernah sama sekali maka akan dibuatkan untuk pertama kali roomnya untuk testing
+
+Aku ingin juga agar address dari smart contract disimpan di suatu file yang mana untuk kebutuhan seperti frontend dan transaction agar refer ke file tersebut, untuk mempermudah jika ada perubahan address smart contract

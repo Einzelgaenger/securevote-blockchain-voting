@@ -1,0 +1,17 @@
+{
+    "network": {
+        "name": "Besu QBFT Private",
+        "chainId": 1337,
+        "rpcUrl": "http://165.227.107.109:8545"
+    },
+    "RoomFactory": {
+        "address": ""
+    },
+    "VotingRoom": {
+        "address": "",
+        "note": "Implementation/template address, not a room clone."
+    },
+    "VotingResultCenter": {
+        "address": ""
+    }
+}
