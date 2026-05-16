@@ -197,7 +197,55 @@ docker compose up -d
 docker compose logs -f node1
 ```
 
-## 6. Frontend configuration
+## 6. Stop nodes temporarily
+
+Jika ingin hemat resource server, matikan semua container Besu sementara:
+
+```bash
+cd ~/securevote-besu-qbft
+docker compose down
+```
+
+Command ini menghentikan dan menghapus container, tetapi data blockchain tetap aman karena data node disimpan di folder bind mount:
+
+```txt
+~/securevote-besu-qbft/nodes/node1/data
+~/securevote-besu-qbft/nodes/node2/data
+~/securevote-besu-qbft/nodes/node3/data
+~/securevote-besu-qbft/nodes/node4/data
+~/securevote-besu-qbft/nodes/node5/data
+```
+
+Untuk menyalakan lagi:
+
+```bash
+cd ~/securevote-besu-qbft
+docker compose up -d
+docker compose logs -f node1
+```
+
+Jika hanya ingin stop tanpa menghapus container:
+
+```bash
+docker compose stop
+```
+
+Lalu start lagi:
+
+```bash
+docker compose start
+```
+
+Jangan gunakan command berikut kecuali memang ingin reset network dari nol:
+
+```bash
+docker compose down -v
+rm -rf nodes/node*/data/*
+```
+
+`down -v` dan penghapusan folder data akan menghilangkan state chain lokal, termasuk contract deployment, room, vote, dan result history.
+
+## 7. Frontend configuration
 
 Update:
 
@@ -221,4 +269,3 @@ MetaMask custom network:
 - RPC URL: `http://165.227.107.109:8545`
 - Chain ID: `1337`
 - Currency symbol: `ETH`
-
