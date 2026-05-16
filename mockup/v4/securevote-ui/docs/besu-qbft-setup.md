@@ -159,18 +159,15 @@ Copy `evaluation/data/testing-eoas.json` to the server, then add each address to
 
 That balance is `1000 ETH` in wei. Also prefund the deployer/admin EOA.
 
-After editing genesis, initialize all nodes:
+After editing genesis, do not run Besu in a manual `docker run` loop. Besu does not need a separate long-running init step here; the database is created when each node starts from `docker-compose.yml`.
+
+If you accidentally ran a command like this and it started logging `Unable to find sync target. Waiting for 5 peers minimum`, press `Ctrl+C`, then reset the partially-created data folders before starting compose:
 
 ```bash
-for i in 1 2 3 4 5; do
-  docker run --rm \
-    -v "$PWD/config:/config" \
-    -v "$PWD/nodes/node$i/data:/data" \
-    hyperledger/besu:latest \
-    --data-path=/data \
-    --genesis-file=/config/genesis.json
-done
+rm -rf nodes/node*/data/*
 ```
+
+This reset is safe only before the real network has started and before contracts/rooms/votes exist.
 
 ## 5. Docker compose
 

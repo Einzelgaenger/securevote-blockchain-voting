@@ -301,7 +301,7 @@ Contoh bentuk `alloc`:
 
 Penting: prefund harus dilakukan sebelum node diinisialisasi. Kalau genesis berubah setelah node berjalan, data node harus di-reset dan init ulang.
 
-## 6. Initialize Besu Nodes
+## 6. Prepare Besu Node Data
 
 Di server:
 
@@ -309,7 +309,9 @@ Di server:
 cd ~/securevote-besu-qbft
 ```
 
-Initialize semua node:
+Besu tidak perlu step init manual terpisah untuk alur Docker Compose ini. Database node akan dibuat saat service compose pertama kali start dengan `--genesis-file=/config/genesis.json` dan `--node-private-key-file=/keys/key`.
+
+Jangan menjalankan loop manual seperti ini:
 
 ```bash
 for i in 1 2 3 4 5; do
@@ -321,6 +323,14 @@ for i in 1 2 3 4 5; do
     --genesis-file=/config/genesis.json
 done
 ```
+
+Command tersebut akan menjalankan node pertama dan menunggu peer, bukan sekadar init singkat. Kalau sudah terlanjur menjalankannya dan muncul log `Unable to find sync target. Waiting for 5 peers minimum`, tekan `Ctrl+C`, lalu reset data yang terlanjur dibuat:
+
+```bash
+rm -rf nodes/node*/data/*
+```
+
+Reset ini hanya aman sebelum network benar-benar dipakai dan sebelum ada contract/room/vote.
 
 ## 7. Buat Docker Compose Besu
 
@@ -937,4 +947,3 @@ Evaluation:
 - `npm run smart-contract` completed
 - smart-contract result JSON saved
 - public audit dashboard shows confirmed round history
-
