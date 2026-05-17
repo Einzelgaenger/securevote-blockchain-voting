@@ -1,17 +1,10 @@
 {
-    "network": {
-        "name": "Besu QBFT Private",
-        "chainId": 1337,
-        "rpcUrl": "http://127.0.0.1:8545"
-    },
-    "RoomFactory": {
-        "address": ""
-    },
-    "VotingRoom": {
-        "address": "",
-        "note": "Implementation/template address, not a room clone."
-    },
-    "VotingResultCenter": {
-        "address": ""
-    }
+    "votingRoomImplementation": "0x1479506388e621721139Bb646daC378ac51f4186",
+    "roomFactory": "0x27977871eEdeC39D5Df1af46Bcd933F817b1c66f",
+    "votingResultCenter": "0x4aff3537F246eDdb699444314a0f92c28f10332D",
+    "admin": "0x4E277e0DAE3DbA90C36Dc50fED2009a2404Cbc33",
+    "network": "besu",
+    "rpcUrl": "http://127.0.0.1:8545",
+    "chainId": 1337,
+    "deployedAt": "2026-05-17T07:52:34.440Z"
 }

@@ -7,6 +7,8 @@
     "scripts": {
         "dev": "npm run dev:frontend",
         "dev:frontend": "npm -w frontend run dev",
+        "build": "npm -w frontend run build",
+        "setup": "npm install",
         "install:all": "npm install"
     }
 }

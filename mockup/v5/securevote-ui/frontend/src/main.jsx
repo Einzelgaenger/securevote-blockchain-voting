@@ -1,37 +1,34 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@rainbow-me/rainbowkit/styles.css";
-import { getDefaultConfig, RainbowKitProvider, ConnectButton } from "@rainbow-me/rainbowkit";
-import { WagmiProvider, http } from "wagmi";
+import { connectorsForWallets, RainbowKitProvider, ConnectButton } from "@rainbow-me/rainbowkit";
+import { injectedWallet } from "@rainbow-me/rainbowkit/wallets";
+import { WagmiProvider, createConfig, http } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.jsx";
+import { APP_CHAIN, RPC_URL } from "./config/contracts.js";
 import "./styles.css";
 
-const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID || 1337);
-const configuredChainName = import.meta.env.VITE_CHAIN_NAME || "Besu QBFT Private";
-const configuredRpcUrl = import.meta.env.VITE_RPC_URL || "http://127.0.0.1:8545";
+const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "securevote-local-besu";
 
-const appChain = {
-    id: configuredChainId,
-    name: configuredChainName,
-    nativeCurrency: {
-        name: import.meta.env.VITE_NATIVE_CURRENCY_NAME || "Ether",
-        symbol: import.meta.env.VITE_NATIVE_CURRENCY_SYMBOL || "ETH",
-        decimals: 18,
-    },
-    rpcUrls: {
-        default: { http: [configuredRpcUrl] },
-        public: { http: [configuredRpcUrl] },
-    },
-};
+const connectors = connectorsForWallets(
+    [
+        {
+            groupName: "Local Wallet",
+            wallets: [injectedWallet],
+        },
+    ],
+    {
+        appName: "SecureVote UI",
+        projectId,
+    }
+);
 
-const config = getDefaultConfig({
-    appName: "SecureVote UI",
-    projectId,
-    chains: [appChain],
+const config = createConfig({
+    chains: [APP_CHAIN],
+    connectors,
     transports: {
-        [appChain.id]: http(configuredRpcUrl || undefined),
+        [APP_CHAIN.id]: http(RPC_URL || undefined),
     },
     ssr: false,
 });
@@ -44,7 +41,7 @@ function Shell() {
             <header className="topbar">
                 <div>
                     <div className="title">SecureVote v2 UI</div>
-                    <div className="subtitle">{appChain.name} - Besu QBFT direct vote via wallet</div>
+                    <div className="subtitle">{APP_CHAIN.name} - Besu QBFT direct vote via wallet</div>
                 </div>
                 <ConnectButton />
             </header>
